@@ -2086,7 +2086,7 @@ extern DEFINE_PER_CPU(int, sched_load_usf);
 #endif
 
 static inline unsigned long
-cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
+__cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 {
 	u64 util, util_unboosted;
 	struct rq *rq = cpu_rq(cpu);
@@ -2120,6 +2120,41 @@ cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 		walt_load->pl = pl;
 		walt_load->ws = walt_load_reported_window;
 	}
+
+	return (util >= capacity) ? capacity : util;
+}
+
+#define ADJUSTED_ASYM_CAP_CPU_UTIL(orig, other, x)	\
+			(max(orig, mult_frac(other, x, 100)))
+
+static inline unsigned long
+cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
+{
+	struct sched_walt_cpu_load wl_other = {0};
+	unsigned long util = 0, util_other = 0;
+	unsigned long capacity = capacity_orig_of(cpu);
+	int i, mpct = sysctl_sched_asym_cap_sibling_freq_match_pct;
+
+	if (!cpumask_test_cpu(cpu, &asym_cap_sibling_cpus))
+		return __cpu_util_freq_walt(cpu, walt_load);
+
+	for_each_cpu(i, &asym_cap_sibling_cpus) {
+		if (i == cpu)
+			util = __cpu_util_freq_walt(cpu, walt_load);
+		else
+			util_other = __cpu_util_freq_walt(i, &wl_other);
+	}
+
+	if (cpu == cpumask_last(&asym_cap_sibling_cpus))
+		mpct = 100;
+
+	util = ADJUSTED_ASYM_CAP_CPU_UTIL(util, util_other, mpct);
+	walt_load->prev_window_util = util;
+
+	walt_load->nl = ADJUSTED_ASYM_CAP_CPU_UTIL(walt_load->nl, wl_other.nl,
+						   mpct);
+	walt_load->pl = ADJUSTED_ASYM_CAP_CPU_UTIL(walt_load->pl, wl_other.pl,
+						   mpct);
 
 	return (util >= capacity) ? capacity : util;
 }
@@ -2794,6 +2829,9 @@ static inline int same_freq_domain(int src_cpu, int dst_cpu)
 	if (src_cpu == dst_cpu)
 		return 1;
 
+	if (asym_cap_siblings(src_cpu, dst_cpu))
+		return 1;
+
 	return cpumask_test_cpu(dst_cpu, &rq->freq_domain_cpumask);
 }
 
@@ -2985,6 +3023,8 @@ static inline struct sched_cluster *rq_cluster(struct rq *rq)
 {
 	return NULL;
 }
+
+static inline int asym_cap_siblings(int cpu1, int cpu2) { return 0; }
 
 static inline u64 scale_load_to_cpu(u64 load, int cpu)
 {
