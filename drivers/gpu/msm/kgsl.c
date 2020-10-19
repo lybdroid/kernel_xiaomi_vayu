@@ -2341,8 +2341,7 @@ static int memdesc_sg_virt(struct kgsl_memdesc *memdesc)
 		goto out;
 	}
 
-	npages = get_user_pages(memdesc->useraddr,
-				sglen, write, pages, NULL);
+	npages = get_user_pages(memdesc->useraddr, sglen, write, pages, NULL);
 	up_read(&current->mm->mmap_sem);
 
 	ret = (npages < 0) ? (int)npages : 0;
