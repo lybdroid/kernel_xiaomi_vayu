@@ -223,6 +223,7 @@ endif
 	obj-y	+= tas256x/
 	obj-y	+= wcd937x/
 	obj-y	+= tfa98xx/
+	obj-y	+= bolero/
 endif
 
 ifeq ($(CONFIG_SND_SOC_GCOV), y)
