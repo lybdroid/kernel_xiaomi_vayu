@@ -2,8 +2,9 @@
 echo "Cloning dependencies"
 git clone --depth=1 https://github.com/lybdroid/kernel_xiaomi_inlh -b  eleven  kernel
 cd kernel
-git clone --depth=1 https://github.com/mvaisakh/gcc-arm64 -b gcc-master gcc64
-git clone --depth=1 https://github.com/mvaisakh/gcc-arm -b gcc-master gcc32
+# git clone --depth=1 https://github.com/mvaisakh/gcc-arm64 -b gcc-master gcc64
+# git clone --depth=1 https://github.com/mvaisakh/gcc-arm -b gcc-master gcc32
+git clone --depth=1 https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 toolchain
 git clone --depth=1 https://github.com/kdrag0n/proton-clang.git clang
 git clone --depth=1 https://github.com/lybdroid/AnyKernel3 -b vayu-miui AnyKernel
 git clone --depth=1 https://android.googlesource.com/platform/system/libufdt libufdt
@@ -14,10 +15,10 @@ LOG=$(echo *.log)
 START=$(date +"%s")
 export CONFIG_PATH=$PWD/arch/arm64/configs/vayu_user_defconfig
 TC_DIR=${PWD}
-GCC64_DIR="${PWD}/gcc64"
+GCC64_DIR="${PWD}/toolchain"
 GCC32_DIR="${PWD}/gcc32"
 CLANG_DIR="${PWD}/clang"
-PATH="$TC_DIR/bin/:$CLANG_DIR/bin/:$GCC64_DIR/bin/:$GCC32_DIR/bin/:/usr/bin:$PATH"
+PATH="$TC_DIR/bin/:$CLANG_DIR/bin/:$GCC64_DIR/bin/:/usr/bin:$PATH"
 export ARCH=arm64
 export KBUILD_BUILD_HOST="Drone-CI"
 export KBUILD_BUILD_USER="lybxlpsv"
@@ -56,10 +57,15 @@ function finerr() {
 # Compile plox
 function compile() {
    make O=out ARCH=arm64 vayu_user_defconfig
-       make -j$(nproc --all) O=out ARCH=arm64 CC=clang AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump STRIP=llvm-strip CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi- Image.gz-dtb dtbo.img
+       make -j$(nproc --all) O=$OUT_PATH ARCH=arm64 \
+	CC=clang \
+	CLANG_TRIPLE=aarch64-linux-gnu- \
+	CROSS_COMPILE=aarch64-linux-android- \
+	Image.gz-dtb
+
    cp out/arch/arm64/boot/Image.gz-dtb AnyKernel
-#    python2 "libufdt/utils/src/mkdtboimg.py" \
-# 					create "out/arch/arm64/boot/dtbo.img" --page_size=4096 out/arch/arm64/boot/dts/qcom/*.dtbo
+    python2 "libufdt/utils/src/mkdtboimg.py" \
+ 					create "out/arch/arm64/boot/dtbo.img" --page_size=4096 out/arch/arm64/boot/dts/qcom/*.dtbo
    cp out/arch/arm64/boot/dtbo.img AnyKernel
 }
 # Zipping
