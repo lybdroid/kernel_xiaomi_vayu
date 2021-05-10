@@ -17,9 +17,7 @@ steps:
       CHATID:
         from_secret: chat_id
     commands:
-      - apt update && apt-get install -y build-essential bc python curl git zip ftp gcc-aarch64-linux-gnu gcc-arm-linux-gnueabi libssl-dev lftp zstd wget libfl-dev clang flex bison cpio
-      - mkdir kernul && cd kernul
-      - wget https://raw.githubusercontent.com/lybdroid/kernel_xiaomi_inlh/eleven/.circleci/bleed.sh
-      - chmod +x bleed.sh
-      - bash bleed.sh
+      - apt update && apt-get install -y build-essential bc python curl git zip ftp libssl-dev lftp zstd wget libfl-dev flex bison cpio device-tree-compiler
+      - chmod +x kramel.sh
+      - bash kramel.sh
 
