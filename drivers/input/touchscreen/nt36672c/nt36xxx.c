@@ -53,6 +53,30 @@
 #include "../xiaomi/xiaomi_touch.h"
 #endif
 
+static int lyb_override = 0;
+module_param(lyb_override, int, 0644);
+
+static int lyb_angle_callback = 3;
+module_param(lyb_angle_callback, int, 0644);
+
+static int lyb_palm_status = 0;
+module_param(lyb_palm_status, int, 0644);
+
+static int lyb_touch_game_mode = 1;
+module_param(lyb_touch_game_mode, int, 0644);
+
+static int lyb_touch_active_mode = 1;
+module_param(lyb_touch_active_mode, int, 0644);
+
+static int lyb_touch_up_thresh = 2;
+module_param(lyb_touch_up_thresh, int, 0644);
+
+static int lyb_touch_tolerance = 5;
+module_param(lyb_touch_tolerance, int, 0644);
+
+static int lyb_touch_edge = 1;
+module_param(lyb_touch_edge, int, 0644);
+
 #if NVT_TOUCH_ESD_PROTECT
 static struct delayed_work nvt_esd_check_work;
 static struct workqueue_struct *nvt_esd_check_wq;
@@ -1858,7 +1882,7 @@ static int nvt_touchfeature_set(uint8_t *touchfeature)
 }
 
 
-static int nvt_set_cur_value(int nvt_mode, int nvt_value)
+static int nvt_set_cur_value_actual(int nvt_mode, int nvt_value)
 {
 	bool skip = false;
 	uint8_t nvt_game_value[2] = {0};
@@ -1952,6 +1976,14 @@ static int nvt_set_cur_value(int nvt_mode, int nvt_value)
 		NVT_LOG("Cmd is not support,skip!");
 	}
 
+	return 0;
+}
+
+static int nvt_set_cur_value(int nvt_mode, int nvt_value)
+{
+	// make sure userspace didn't set anything when overriden
+	if (lyb_override < 2)
+		return nvt_set_cur_value_actual(nvt_mode, nvt_value);
 	return 0;
 }
 
@@ -2934,6 +2966,42 @@ static int32_t nvt_ts_suspend(struct device *dev)
 	return 0;
 }
 
+void lyb_apply_changes()
+{
+	if (lyb_override >= 1 && lyb_override != 3)	{
+		nvt_set_cur_value_actual(Touch_Panel_Orientation, lyb_angle_callback);
+	}
+
+	if (lyb_override >= 2)	{
+			nvt_set_pocket_palm_switch((lyb_palm_status == 0));
+			if (lyb_touch_game_mode < 0)
+				lyb_touch_game_mode = 0;
+			if (lyb_touch_game_mode > 1)
+				lyb_touch_game_mode = 1;
+			nvt_set_cur_value_actual(Touch_Game_Mode, lyb_touch_game_mode);
+			if (lyb_touch_active_mode < 0)
+				lyb_touch_active_mode = 0;
+			if (lyb_touch_active_mode > 1)
+				lyb_touch_active_mode = 1;
+			nvt_set_cur_value_actual(Touch_Active_MODE, lyb_touch_active_mode);
+			if (lyb_touch_up_thresh < 0)
+				lyb_touch_up_thresh = 0;
+			if (lyb_touch_up_thresh > 2)
+				lyb_touch_up_thresh = 2;
+			nvt_set_cur_value_actual(Touch_UP_THRESHOLD, lyb_touch_up_thresh);
+			if (lyb_touch_tolerance < 0)
+				lyb_touch_tolerance = 0;
+			if (lyb_touch_tolerance > 5)
+				lyb_touch_tolerance = 5;
+			nvt_set_cur_value_actual(Touch_Tolerance, lyb_touch_tolerance);
+			if (lyb_touch_edge < 0)
+				lyb_touch_edge = 8;
+			if (lyb_touch_edge > 8)
+				lyb_touch_edge = 8;
+			nvt_set_cur_value_actual(Touch_Edge_Filter, lyb_touch_edge);
+	}
+}
+
 /*******************************************************
 Description:
 	Novatek touchscreen driver resume function.
@@ -3024,6 +3092,9 @@ static int32_t nvt_ts_resume(struct device *dev)
 		NVT_LOG("execute delayed command, set double click wakeup %d\n", ts->db_wakeup);
 		dsi_panel_doubleclick_enable(!!ts->db_wakeup);
 	}
+
+	lyb_apply_changes();
+	
 Exit:
 	if (ts->dev_pm_suspend)
 		pm_relax(dev);
