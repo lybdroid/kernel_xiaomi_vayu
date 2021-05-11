@@ -136,7 +136,8 @@ struct nvt_ts_data {
 	struct work_struct switch_mode_work;
 	uint16_t addr;
 	int8_t phys[32];
-
+	struct workqueue_struct *coord_workqueue;
+	struct work_struct irq_work;
 #ifdef CONFIG_DRM
 	struct notifier_block drm_notif;
 #else

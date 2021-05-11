@@ -1378,8 +1378,10 @@ Description:
 return:
 	n.a.
 *******************************************************/
-static irqreturn_t nvt_ts_work_func(int irq, void *data)
+static void nvt_ts_worker(struct work_struct *work)
 {
+	struct nvt_ts_data *ts = container_of(work, struct nvt_ts_data, irq_work);
+	
 	int32_t ret = -1;
 	uint8_t point_data[POINT_DATA_LEN + 1 + DUMMY_BYTES] = {0};
 	uint32_t position = 0;
@@ -1477,7 +1479,7 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
 			lpm_disable_for_input(false);
 		mutex_unlock(&ts->lock);
-		return IRQ_HANDLED;
+		return;
 	}
 #endif
 
@@ -1567,6 +1569,19 @@ static irqreturn_t nvt_ts_work_func(int irq, void *data)
 
 XFER_ERROR:
 	mutex_unlock(&ts->lock);
+	return;
+}
+
+/*******************************************************
+Description:
+	Novatek touchscreen irq handler.
+return:
+	n.a.
+*******************************************************/
+static irqreturn_t nvt_ts_work_func(int irq, void *data)
+{
+	struct nvt_ts_data *ts = data;
+	queue_work(ts->coord_workqueue, &ts->irq_work);
 	return IRQ_HANDLED;
 }
 
@@ -2570,6 +2585,14 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	attrs_p->attrs = nvt_panel_attr;
 	ret = sysfs_create_group(&pdev->dev.kobj, ts->attrs);
 
+	ts->coord_workqueue = alloc_workqueue("nvt_ts_workqueue", WQ_HIGHPRI, 0);
+	if (!ts->coord_workqueue) {
+		NVT_ERR("create nvt_ts_workqueue fail");
+		ret = -ENOMEM;
+		goto err_create_nvt_ts_workqueue_failed;
+	}
+	INIT_WORK(&ts->irq_work, nvt_ts_worker);
+	
 	ts->event_wq = alloc_workqueue("nvt-event-queue",
 		WQ_UNBOUND | WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
 	if (!ts->event_wq) {
@@ -2648,6 +2671,9 @@ err_register_fb_notif_failed:
 err_register_early_suspend_failed:
 #endif
 	destroy_workqueue(ts->event_wq);
+err_create_nvt_ts_workqueue_failed:
+	if (ts->coord_workqueue)
+		destroy_workqueue(ts->coord_workqueue);
 err_alloc_work_thread_failed:
 #if NVT_TOUCH_MP
 nvt_mp_proc_deinit();
@@ -2728,6 +2754,9 @@ return:
 static int32_t nvt_ts_remove(struct platform_device *pdev)
 {
 	NVT_LOG("Removing driver...\n");
+
+	if (ts->coord_workqueue)
+		destroy_workqueue(ts->coord_workqueue);
 
 #ifdef CONFIG_DRM
 	if (drm_unregister_client(&ts->drm_notif))
