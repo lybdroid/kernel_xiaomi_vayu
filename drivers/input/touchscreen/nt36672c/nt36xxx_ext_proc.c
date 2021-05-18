@@ -30,6 +30,7 @@
 #define NVT_DIFF "nvt_diff"
 #define NVT_XIAOMI_CONFIG_INFO "nvt_xiaomi_config_info"
 #define NVT_XIAOMI_LOCKDOWN_INFO "tp_lockdown_info"
+#define NVT_LYB_APPLY_CHANGES "nvt_lyb_apply_changes"
 
 #define SPI_TANSFER_LENGTH  256
 
@@ -49,6 +50,7 @@ static struct proc_dir_entry *NVT_proc_raw_entry;
 static struct proc_dir_entry *NVT_proc_diff_entry;
 static struct proc_dir_entry *NVT_proc_xiaomi_config_info_entry;
 static struct proc_dir_entry *NVT_proc_xiaomi_lockdown_info_entry;
+static struct proc_dir_entry *NVT_proc_lyb_apply_changes;
 
 
 // Xiaomi Config Info.
@@ -612,6 +614,32 @@ nvt_set_pocket_palm_switch_out:
 	return ret;
 }
 
+static ssize_t nvt_lyb_apply_proc_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
+{
+	int32_t ret;
+	NVT_LOG("applying lyb changes\n");
+
+	ret = 0;
+	lyb_apply_changes();
+	return ret;
+}
+
+static ssize_t nvt_lyb_apply_proc_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
+{
+	int32_t ret;
+	NVT_LOG("applying lyb changes\n");
+
+	ret = 0;
+	lyb_apply_changes();
+	return ret;
+}
+
+static const struct file_operations nvt_lyb_apply_fops = {
+	.owner = THIS_MODULE,
+	.read = nvt_lyb_apply_proc_read,
+	.write = nvt_lyb_apply_proc_write,
+};
+
 /*******************************************************
 Description:
 	Novatek touchscreen extra function proc. file node
@@ -670,6 +698,14 @@ int32_t nvt_extra_proc_init(void)
 		NVT_LOG("create proc/%s Succeeded!\n", NVT_XIAOMI_LOCKDOWN_INFO);
 	}
 
+	NVT_proc_lyb_apply_changes = proc_create(NVT_LYB_APPLY_CHANGES, 0666, NULL, &nvt_lyb_apply_fops);
+	if (NVT_proc_lyb_apply_changes == NULL) {
+		NVT_ERR("create proc/nvt_lyb_apply_changes Failed!\n");
+		return -ENOMEM;
+	} else {
+		NVT_LOG("create proc/nvt_lyb_apply_changes Succeeded!\n");
+	}
+
 	return 0;
 }
 
@@ -712,5 +748,12 @@ void nvt_extra_proc_deinit(void)
 		NVT_proc_xiaomi_config_info_entry = NULL;
 		NVT_LOG("Removed /proc/%s\n", NVT_XIAOMI_CONFIG_INFO);
 	}
+
+	if (NVT_proc_lyb_apply_changes != NULL) {
+		remove_proc_entry(NVT_LYB_APPLY_CHANGES, NULL);
+		NVT_proc_lyb_apply_changes = NULL;
+		NVT_LOG("Removed /proc/%s\n", NVT_LYB_APPLY_CHANGES);
+	}
+
 }
 #endif

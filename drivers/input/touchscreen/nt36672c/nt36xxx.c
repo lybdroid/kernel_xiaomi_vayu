@@ -167,6 +167,31 @@ struct attribute *nvt_panel_attr[] = {
 };
 
 static uint8_t bTouchIsAwake = 0;
+
+static int lyb_override = 0;
+module_param(lyb_override, int, 0644);
+
+static int lyb_angle_callback = 1;
+module_param(lyb_angle_callback, int, 0644);
+
+static int lyb_touch_game_mode = 1;
+module_param(lyb_touch_game_mode, int, 0644);
+
+static int lyb_touch_active_mode = 1;
+module_param(lyb_touch_active_mode, int, 0644);
+
+static int lyb_touch_up_thresh = 1;
+module_param(lyb_touch_up_thresh, int, 0644);
+
+static int lyb_touch_tolerance = 5;
+module_param(lyb_touch_tolerance, int, 0644);
+
+static int lyb_touch_edge = 1;
+module_param(lyb_touch_edge, int, 0644);
+
+static int lyb_touch_resist_rf = 0;
+module_param(lyb_touch_resist_rf, int, 0644);
+
 /*******************************************************
 Description:
 	Novatek touchscreen irq enable/disable function.
@@ -1505,13 +1530,6 @@ static void nvt_ts_worker(struct work_struct *work)
 			input_w = (uint32_t)(point_data[position + 4]);
 			if (input_w == 0)
 				input_w = 1;
-			if (i < 2) {
-				input_p = (uint32_t)(point_data[position + 5]) + (uint32_t)(point_data[i + 63] << 8);
-				if (input_p > TOUCH_FORCE_NUM)
-					input_p = TOUCH_FORCE_NUM;
-			} else {
-				input_p = (uint32_t)(point_data[position + 5]);
-			}
 			if (input_p == 0)
 				input_p = 1;
 
@@ -1519,8 +1537,6 @@ static void nvt_ts_worker(struct work_struct *work)
 			press_id[input_id - 1] = 1;
 			input_mt_slot(ts->input_dev, input_id - 1);
 			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, true);
-			input_report_key(ts->input_dev, BTN_TOUCH, 1);
-			input_report_key(ts->input_dev, BTN_TOOL_FINGER, 1);
 #else /* MT_PROTOCOL_B */
 			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, input_id - 1);
 			input_report_key(ts->input_dev, BTN_TOUCH, 1);
@@ -1528,8 +1544,11 @@ static void nvt_ts_worker(struct work_struct *work)
 
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
-			/*input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);*/
-			/*input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);*/
+			input_p = input_w;
+			if (input_p > 30)
+					input_p = 30;
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
 
 #if MT_PROTOCOL_B
 #else /* MT_PROTOCOL_B */
@@ -1541,23 +1560,25 @@ static void nvt_ts_worker(struct work_struct *work)
 		}
 	}
 
+	input_sync(ts->input_dev);
+
 #if MT_PROTOCOL_B
 	for (i = 0; i < ts->max_touch_num; i++) {
 		if (press_id[i] != 1) {
 			input_mt_slot(ts->input_dev, i);
-			/*input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);*/
-			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
-			/*input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0); */
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
 			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
 				input_report_key(ts->input_dev, BTN_TOUCH, 0);
 				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
 				if (ts->debug_flag >= TOUCH_DISABLE_LPM)
 					lpm_disable_for_input(false);
 			}
+			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
 			clear_bit(i, ts->slot_map);
 		}
 	}
-	/* input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0)); */
+	input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0));
 #else /* MT_PROTOCOL_B */
 	if (finger_cnt == 0) {
 		input_report_key(ts->input_dev, BTN_TOUCH, 0);
@@ -1873,7 +1894,7 @@ static int nvt_touchfeature_set(uint8_t *touchfeature)
 }
 
 
-static int nvt_set_cur_value(int nvt_mode, int nvt_value)
+static int nvt_set_cur_value_actual(int nvt_mode, int nvt_value, bool nocheck)
 {
 	bool skip = false;
 	uint8_t nvt_game_value[2] = {0};
@@ -1892,19 +1913,21 @@ static int nvt_set_cur_value(int nvt_mode, int nvt_value)
 
 	xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] = nvt_value;
 
-	if (xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] >
-			xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MAX_VALUE]) {
+	if (!nocheck)
+	{
+		if (xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] >
+				xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MAX_VALUE]) {
 
-		xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] =
-				xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MAX_VALUE];
+			xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] =
+					xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MAX_VALUE];
 
-	} else if (xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] <
-			xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MIN_VALUE]) {
+		} else if (xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] <
+				xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MIN_VALUE]) {
 
-		xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] =
-				xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MIN_VALUE];
+			xiaomi_touch_interfaces.touch_mode[nvt_mode][SET_CUR_VALUE] =
+					xiaomi_touch_interfaces.touch_mode[nvt_mode][GET_MIN_VALUE];
+		}
 	}
-
 	switch (nvt_mode) {
 	case Touch_Game_Mode:
 			break;
@@ -1967,6 +1990,30 @@ static int nvt_set_cur_value(int nvt_mode, int nvt_value)
 		NVT_LOG("Cmd is not support,skip!");
 	}
 
+	return 0;
+}
+
+static int nvt_set_cur_value(int nvt_mode, int nvt_value)
+{
+	// make sure userspace didn't set anything when overriden
+	bool skip = true;
+
+	if (lyb_override >= 1)
+	{
+		if (lyb_override == 1)
+		{
+			if (nvt_mode == Touch_Panel_Orientation)
+				skip = false;
+		} else skip = false;
+	}
+
+	if (lyb_override <= 0)
+	{
+		skip = false;
+	}
+
+	if (!skip)
+		return nvt_set_cur_value_actual(nvt_mode, nvt_value, false);
 	return 0;
 }
 
@@ -2454,8 +2501,10 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	input_mt_init_slots(ts->input_dev, ts->max_touch_num, 0);
 #endif
 
+	input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, 30, 0, 0);
+
 #if TOUCH_MAX_FINGER_NUM > 1
-	/*input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);*/
+	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
 
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->abs_x_max - 1, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, ts->abs_y_max - 1, 0, 0);
@@ -3053,6 +3102,9 @@ static int32_t nvt_ts_resume(struct device *dev)
 		NVT_LOG("execute delayed command, set double click wakeup %d\n", ts->db_wakeup);
 		dsi_panel_doubleclick_enable(!!ts->db_wakeup);
 	}
+
+	lyb_apply_changes();
+
 Exit:
 	if (ts->dev_pm_suspend)
 		pm_relax(dev);
@@ -3060,6 +3112,48 @@ Exit:
 
 	return 0;
 }
+
+void lyb_apply_changes()
+{
+	if (lyb_override >= 1)	{
+		// 1 == AOSP with touch profile, override panel orientation/edge rejection
+		nvt_set_cur_value_actual(Touch_Panel_Orientation, lyb_angle_callback, false);
+		if (lyb_override >= 2)	{
+			// 2 == AOSP without touch profile
+			if (lyb_touch_game_mode > 1)
+				lyb_touch_game_mode = 1;
+			if (lyb_touch_game_mode < 0)
+				lyb_touch_game_mode = 0;
+			nvt_set_cur_value_actual(Touch_Game_Mode, lyb_touch_game_mode, false);
+			if (lyb_touch_active_mode > 1)
+				lyb_touch_active_mode = 1;
+			if (lyb_touch_active_mode < 0)
+				lyb_touch_active_mode = 0;
+			nvt_set_cur_value_actual(Touch_Active_MODE, lyb_touch_active_mode, false);
+			if (lyb_touch_up_thresh > 2)
+				lyb_touch_up_thresh = 2;
+			if (lyb_touch_up_thresh < 0)
+				lyb_touch_up_thresh = 0;
+			nvt_set_cur_value_actual(Touch_UP_THRESHOLD, lyb_touch_up_thresh, false);
+			if (lyb_touch_up_thresh > 5)
+				lyb_touch_up_thresh = 5;
+			if (lyb_touch_up_thresh < 0)
+				lyb_touch_up_thresh = 0;
+			nvt_set_cur_value_actual(Touch_Tolerance, lyb_touch_tolerance, true);
+			if (lyb_touch_edge > 8)
+				lyb_touch_edge = 8;
+			if (lyb_touch_edge < 0)
+				lyb_touch_edge = 0;
+			nvt_set_cur_value_actual(Touch_Edge_Filter, lyb_touch_edge, true);
+			if (lyb_touch_resist_rf > 1)
+				lyb_touch_resist_rf = 1;
+			if (lyb_touch_resist_rf < 0)
+				lyb_touch_resist_rf = 0;
+			nvt_set_cur_value_actual(Touch_Resist_RF, lyb_touch_resist_rf, false);
+		}
+	}
+}
+
 
 #ifdef CONFIG_DRM
 static int nvt_drm_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
