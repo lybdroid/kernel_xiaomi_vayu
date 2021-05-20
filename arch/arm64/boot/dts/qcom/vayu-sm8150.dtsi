@@ -611,7 +611,7 @@ And public attribution of xiaomi platforms(like J20S and so and)
 				compatible = "xiaomi,spi-for-tp";
 				reg = <0>;
 				status = "ok";
-				spi-max-frequency = <10000000>;  //10M
+				spi-max-frequency = <8000000>;  //10M
 		};
 };
 
@@ -620,7 +620,7 @@ And public attribution of xiaomi platforms(like J20S and so and)
 	ts_novatek {
 		compatible = "novatek,NVT-ts-spi";
 		status = "ok";
-		spi-max-frequency = <10000000>;  /*4800000,9600000,15000000,19200000 10M*/
+		spi-max-frequency = <8000000>;  /*4800000,9600000,15000000,19200000 10M*/
 		novatek,reset-gpio = <&tlmm 12 0x00>;
 		novatek,irq-gpio = <&tlmm 122 0x2001>;
 		pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
