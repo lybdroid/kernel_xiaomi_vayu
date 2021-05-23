@@ -806,7 +806,6 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 			   memcmp(line+3, "healthd", sizeof("healthd")-1) == 0 ||
 					memcmp(line+3, "wlan", sizeof("wlan")-1) == 0)
 			goto ignore;
-		{
 		char *endp = NULL;
 		unsigned int u;
 
@@ -818,7 +817,8 @@ static ssize_t devkmsg_write(struct kiocb *iocb, struct iov_iter *from)
 			endp++;
 			len -= endp - line;
 			line = endp;
-		}
+			if(strncmp(line, "logd: Skipping", sizeof("logd: Skipping")))
+				goto ignore;
 		}
 	}
 
