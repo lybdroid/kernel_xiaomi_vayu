@@ -44,7 +44,7 @@ static int f2fs_filemap_fault(struct vm_fault *vmf)
 		f2fs_update_iostat(F2FS_I_SB(inode), APP_MAPPED_READ_IO,
 							F2FS_BLKSIZE);
 
-	trace_f2fs_filemap_fault(inode, vmf->pgoff, (unsigned long)err);
+	//trace_f2fs_filemap_fault(inode, vmf->pgoff, (unsigned long)err);
 
 	return err;
 }
@@ -150,7 +150,7 @@ static int f2fs_vm_page_mkwrite(struct vm_fault *vmf)
 	f2fs_update_iostat(sbi, APP_MAPPED_IO, F2FS_BLKSIZE);
 	f2fs_update_time(sbi, REQ_TIME);
 
-	trace_f2fs_vm_page_mkwrite(page, DATA);
+	//trace_f2fs_vm_page_mkwrite(page, DATA);
 out_sem:
 	up_read(&F2FS_I(inode)->i_mmap_sem);
 
@@ -258,16 +258,16 @@ static int f2fs_do_sync_file(struct file *file, loff_t start, loff_t end,
 				is_sbi_flag_set(sbi, SBI_CP_DISABLED)))
 		return 0;
 
-	trace_f2fs_sync_file_enter(inode);
+	//trace_f2fs_sync_file_enter(inode);
 
-	if (trace_android_fs_fsync_start_enabled()) {
+	/*if (trace_android_fs_fsync_start_enabled()) {
 		char *path, pathbuf[MAX_TRACE_PATHBUF_LEN];
 
 		path = android_fstrace_get_pathname(pathbuf,
 				MAX_TRACE_PATHBUF_LEN, inode);
 		trace_android_fs_fsync_start(inode,
 				current->pid, path, current->comm);
-	}
+	}*/
 
 	if (S_ISDIR(inode->i_mode))
 		goto go_write;
@@ -279,7 +279,7 @@ static int f2fs_do_sync_file(struct file *file, loff_t start, loff_t end,
 	clear_inode_flag(inode, FI_NEED_IPU);
 
 	if (ret) {
-		trace_f2fs_sync_file_exit(inode, cp_reason, datasync, ret);
+		//trace_f2fs_sync_file_exit(inode, cp_reason, datasync, ret);
 		return ret;
 	}
 
@@ -372,9 +372,9 @@ flush_out:
 	}
 	f2fs_update_time(sbi, REQ_TIME);
 out:
-	trace_f2fs_sync_file_exit(inode, cp_reason, datasync, ret);
+	//trace_f2fs_sync_file_exit(inode, cp_reason, datasync, ret);
 	f2fs_trace_ios(NULL, 1);
-	trace_android_fs_fsync_end(inode, start, end - start);
+	//trace_android_fs_fsync_end(inode, start, end - start);
 
 	return ret;
 }
@@ -632,8 +632,8 @@ void f2fs_truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 	dn->ofs_in_node = ofs;
 
 	f2fs_update_time(sbi, REQ_TIME);
-	trace_f2fs_truncate_data_blocks_range(dn->inode, dn->nid,
-					 dn->ofs_in_node, nr_free);
+	//trace_f2fs_truncate_data_blocks_range(dn->inode, dn->nid,
+	//				 dn->ofs_in_node, nr_free);
 }
 
 void f2fs_truncate_data_blocks(struct dnode_of_data *dn)
@@ -687,7 +687,7 @@ static int do_truncate_blocks(struct inode *inode, u64 from, bool lock)
 	struct page *ipage;
 	bool truncate_page = false;
 
-	trace_f2fs_truncate_blocks_enter(inode, from);
+	//trace_f2fs_truncate_blocks_enter(inode, from);
 
 	free_from = (pgoff_t)F2FS_BLK_ALIGN(from);
 
@@ -739,7 +739,7 @@ free_partial:
 	if (!err)
 		err = truncate_partial_data_page(inode, from, truncate_page);
 
-	trace_f2fs_truncate_blocks_exit(inode, err);
+	//trace_f2fs_truncate_blocks_exit(inode, err);
 	return err;
 }
 
@@ -776,7 +776,7 @@ int f2fs_truncate(struct inode *inode)
 				S_ISLNK(inode->i_mode)))
 		return 0;
 
-	trace_f2fs_truncate(inode);
+	//trace_f2fs_truncate(inode);
 
 	if (time_to_inject(F2FS_I_SB(inode), FAULT_TRUNCATE)) {
 		f2fs_show_injection_info(F2FS_I_SB(inode), FAULT_TRUNCATE);
@@ -1766,7 +1766,7 @@ static long f2fs_fallocate(struct file *file, int mode,
 out:
 	inode_unlock(inode);
 
-	trace_f2fs_fallocate(inode, mode, offset, len, ret);
+	//trace_f2fs_fallocate(inode, mode, offset, len, ret);
 	return ret;
 }
 
@@ -2244,7 +2244,7 @@ static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
 				ret = 0;
 				f2fs_stop_checkpoint(sbi, false);
 				set_sbi_flag(sbi, SBI_IS_SHUTDOWN);
-				trace_f2fs_shutdown(sbi, in, ret);
+				//trace_f2fs_shutdown(sbi, in, ret);
 			}
 			return ret;
 		}
@@ -2303,7 +2303,7 @@ out:
 	if (in != F2FS_GOING_DOWN_FULLSYNC)
 		mnt_drop_write_file(filp);
 
-	trace_f2fs_shutdown(sbi, in, ret);
+	//trace_f2fs_shutdown(sbi, in, ret);
 
 	return ret;
 }
@@ -3572,8 +3572,8 @@ write:
 	}
 	inode_unlock(inode);
 out:
-	trace_f2fs_file_write_iter(inode, iocb->ki_pos,
-					iov_iter_count(from), ret);
+	//trace_f2fs_file_write_iter(inode, iocb->ki_pos,
+	//				iov_iter_count(from), ret);
 	if (ret > 0)
 		ret = generic_write_sync(iocb, ret);
 	return ret;
