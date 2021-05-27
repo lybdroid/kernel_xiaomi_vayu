@@ -204,7 +204,7 @@ module_param(lyb_touch_active_mode, int, 0644);
 static int lyb_touch_up_thresh = 1;
 module_param(lyb_touch_up_thresh, int, 0644);
 
-static int lyb_touch_tolerance = 5;
+static int lyb_touch_tolerance = 0;
 module_param(lyb_touch_tolerance, int, 0644);
 
 static int lyb_touch_edge = 0;
@@ -2232,7 +2232,7 @@ static void nvt_ts_worker(struct work_struct *work)
 	int32_t finger_cnt = 0;
 
 #if WAKEUP_GESTURE
-	if (bTouchIsAwake == 0) {
+	if (unlikely(bTouchIsAwake == 0)) {
 		pm_wakeup_event(&ts->input_dev->dev, 5000);
 	}
 #endif
@@ -2241,7 +2241,7 @@ static void nvt_ts_worker(struct work_struct *work)
 	mutex_lock(&ts->lock);
 	if (ts->debug_flag >= TOUCH_DISABLE_LPM)
 		lpm_disable_for_input(true);
-	if (ts->dev_pm_suspend) {
+	if (unlikely(ts->dev_pm_suspend)) {
 		ret = wait_for_completion_timeout(&ts->dev_pm_suspend_completion, msecs_to_jiffies(500));
 		if (!ret) {
 			NVT_ERR("system(spi) can't finished resuming procedure, skip it\n");
@@ -2252,7 +2252,7 @@ static void nvt_ts_worker(struct work_struct *work)
 	}
 
 	ret = CTP_SPI_READ(ts->client, point_data, POINT_DATA_LEN + 1);
-	if (ret < 0) {
+	if (unlikely(ret < 0)) {
 		NVT_ERR("CTP_SPI_READ failed.(%d)\n", ret);
 		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
 			lpm_disable_for_input(false);
@@ -2268,7 +2268,7 @@ static void nvt_ts_worker(struct work_struct *work)
 
 #if NVT_TOUCH_WDT_RECOVERY
 	/* ESD protect by WDT */
-	if (nvt_wdt_fw_recovery(point_data)) {
+	if (unlikely(nvt_wdt_fw_recovery(point_data))) {
 		NVT_ERR("Recover for fw reset, %02X\n", point_data[1]);
 		if (point_data[1] == 0xFD) {
 			NVT_ERR("Dump FW history:\n");
@@ -2290,7 +2290,7 @@ static void nvt_ts_worker(struct work_struct *work)
 
 #if NVT_TOUCH_ESD_PROTECT
 	/* ESD protect by FW handshake */
-	if (nvt_fw_recovery(point_data)) {
+	if (unlikely(nvt_fw_recovery(point_data))) {
 		nvt_esd_check_enable(true);
 		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
 			lpm_disable_for_input(false);
@@ -2300,7 +2300,7 @@ static void nvt_ts_worker(struct work_struct *work)
 
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 	input_id = (uint8_t)(point_data[1] >> 3);
-	if (nvt_check_palm(input_id, point_data)) {
+	if (unlikely(nvt_check_palm(input_id, point_data))) {
 		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
 			lpm_disable_for_input(false);
 		goto XFER_ERROR; /* to skip point data parsing */
@@ -2308,7 +2308,7 @@ static void nvt_ts_worker(struct work_struct *work)
 #endif
 
 #if WAKEUP_GESTURE
-	if (bTouchIsAwake == 0) {
+	if (unlikely(bTouchIsAwake == 0)) {
 		input_id = (uint8_t)(point_data[1] >> 3);
 		nvt_ts_wakeup_gesture_report(input_id, point_data);
 		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
@@ -2340,9 +2340,6 @@ static void nvt_ts_worker(struct work_struct *work)
 			input_w = (uint32_t)(point_data[position + 4]);
 			if (input_w == 0)
 				input_w = 1;
-			if (input_p == 0)
-				input_p = 1;
-
 #if MT_PROTOCOL_B
 			press_id[input_id - 1] = 1;
 			input_mt_slot(ts->input_dev, input_id - 1);
@@ -2364,13 +2361,9 @@ static void nvt_ts_worker(struct work_struct *work)
 #else /* MT_PROTOCOL_B */
 			input_mt_sync(ts->input_dev);
 #endif /* MT_PROTOCOL_B */
-
-			set_bit(input_id - 1, ts->slot_map);
 			finger_cnt++;
 		}
 	}
-
-	input_sync(ts->input_dev);
 
 #if MT_PROTOCOL_B
 	for (i = 0; i < ts->max_touch_num; i++) {
@@ -2378,17 +2371,14 @@ static void nvt_ts_worker(struct work_struct *work)
 			input_mt_slot(ts->input_dev, i);
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
 			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
-			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
-				input_report_key(ts->input_dev, BTN_TOUCH, 0);
-				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
-				if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-					lpm_disable_for_input(false);
-			}
 			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
-			clear_bit(i, ts->slot_map);
 		}
 	}
 	input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0));
+	if (unlikely(finger_cnt == 0)) {
+		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+			lpm_disable_for_input(false);
+	}
 #else /* MT_PROTOCOL_B */
 	if (finger_cnt == 0) {
 		input_report_key(ts->input_dev, BTN_TOUCH, 0);
@@ -2401,7 +2391,7 @@ static void nvt_ts_worker(struct work_struct *work)
 XFER_ERROR:
 	mutex_unlock(&ts->lock);
 
-	if (!lyb_applied)
+	if (unlikely(!lyb_applied))
 	{
 		lyb_applied = true;
 		lyb_apply_changes();
