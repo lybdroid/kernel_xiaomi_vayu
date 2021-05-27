@@ -1741,8 +1741,25 @@ static int nvt_set_cur_value_actual(int nvt_mode, int nvt_value, bool nocheck)
 	}
 	switch (nvt_mode) {
 	case Touch_Game_Mode:
+			temp_value = xiaomi_touch_interfaces.touch_mode[Touch_Game_Mode][SET_CUR_VALUE];
+			if (temp_value == 1)
+			{
+				nvt_game_value[0] = 0x7d;
+			} else {
+				nvt_game_value[0] = 0x7e;
+			}
+			nvt_game_value[1] = 0;
 			break;
 	case Touch_Active_MODE:
+			temp_value = xiaomi_touch_interfaces.touch_mode[Touch_Active_MODE][SET_CUR_VALUE];
+			if (temp_value == 1)
+			{
+				nvt_game_value[0] = 0x73;
+			
+			} else {
+				nvt_game_value[0] = 0x74;
+			}
+			nvt_game_value[1] = 0;
 			break;
 	case Touch_UP_THRESHOLD:
 			temp_value = xiaomi_touch_interfaces.touch_mode[Touch_UP_THRESHOLD][SET_CUR_VALUE];
