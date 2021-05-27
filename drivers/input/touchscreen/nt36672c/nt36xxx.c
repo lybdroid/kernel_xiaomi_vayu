@@ -189,10 +189,10 @@ struct attribute *nvt_panel_attr[] = {
 
 static uint8_t bTouchIsAwake = 0;
 
-static int lyb_override = 0;
+static int lyb_override = 2;
 module_param(lyb_override, int, 0644);
 
-static int lyb_angle_callback = 1;
+static int lyb_angle_callback = 3;
 module_param(lyb_angle_callback, int, 0644);
 
 static int lyb_touch_game_mode = 1;
@@ -207,11 +207,13 @@ module_param(lyb_touch_up_thresh, int, 0644);
 static int lyb_touch_tolerance = 5;
 module_param(lyb_touch_tolerance, int, 0644);
 
-static int lyb_touch_edge = 1;
+static int lyb_touch_edge = 0;
 module_param(lyb_touch_edge, int, 0644);
 
 static int lyb_touch_resist_rf = 0;
 module_param(lyb_touch_resist_rf, int, 0644);
+
+static bool lyb_applied = false;
 
 /*******************************************************
 Description:
@@ -1416,218 +1418,6 @@ exit_nvt_dump_fw_history:
 	return ret;
 }
 
-#define POINT_DATA_LEN 65
-/*******************************************************
-Description:
-	Novatek touchscreen work function.
-
-return:
-	n.a.
-*******************************************************/
-static void nvt_ts_worker(struct work_struct *work)
-{
-	struct nvt_ts_data *ts = container_of(work, struct nvt_ts_data, irq_work);
-	
-	int32_t ret = -1;
-	uint8_t point_data[POINT_DATA_LEN + 1 + DUMMY_BYTES] = {0};
-	uint32_t position = 0;
-	uint32_t input_x = 0;
-	uint32_t input_y = 0;
-	uint32_t input_w = 0;
-	uint32_t input_p = 0;
-	uint8_t input_id = 0;
-#if MT_PROTOCOL_B
-	uint8_t press_id[TOUCH_MAX_FINGER_NUM] = {0};
-#endif /* MT_PROTOCOL_B */
-	int32_t i = 0;
-	int32_t finger_cnt = 0;
-
-#if WAKEUP_GESTURE
-	if (bTouchIsAwake == 0) {
-		pm_wakeup_event(&ts->input_dev->dev, 5000);
-	}
-#endif
-	if (ts->debug_flag == TOUCH_IRQ_BOOST)
-		touch_irq_boost();
-	mutex_lock(&ts->lock);
-	if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-		lpm_disable_for_input(true);
-	if (ts->dev_pm_suspend) {
-		ret = wait_for_completion_timeout(&ts->dev_pm_suspend_completion, msecs_to_jiffies(500));
-		if (!ret) {
-			NVT_ERR("system(spi) can't finished resuming procedure, skip it\n");
-			if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-				lpm_disable_for_input(false);
-			goto XFER_ERROR;
-		}
-	}
-
-	ret = CTP_SPI_READ(ts->client, point_data, POINT_DATA_LEN + 1);
-	if (ret < 0) {
-		NVT_ERR("CTP_SPI_READ failed.(%d)\n", ret);
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
-		goto XFER_ERROR;
-	}
-	/*
-	//--- dump SPI buf ---
-	for (i = 0; i < 10; i++) {
-		printk("%02X %02X %02X %02X %02X %02X  ",
-			point_data[1+i*6], point_data[2+i*6], point_data[3+i*6], point_data[4+i*6], point_data[5+i*6], point_data[6+i*6]);
-	}
-	printk("\n");*/
-
-#if NVT_TOUCH_WDT_RECOVERY
-	/* ESD protect by WDT */
-	if (nvt_wdt_fw_recovery(point_data)) {
-		NVT_ERR("Recover for fw reset, %02X\n", point_data[1]);
-		if (point_data[1] == 0xFD) {
-			NVT_ERR("Dump FW history:\n");
-			nvt_dump_fw_history();
-		}
-		if (nvt_get_dbgfw_status()) {
-			if (nvt_update_firmware(DEFAULT_DEBUG_FW_NAME) < 0) {
-				NVT_ERR("use built-in fw");
-				nvt_update_firmware(ts->fw_name);
-			}
-		} else {
-			nvt_update_firmware(ts->fw_name);
-		}
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
-		goto XFER_ERROR;
-   }
-#endif /* #if NVT_TOUCH_WDT_RECOVERY */
-
-#if NVT_TOUCH_ESD_PROTECT
-	/* ESD protect by FW handshake */
-	if (nvt_fw_recovery(point_data)) {
-		nvt_esd_check_enable(true);
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
-		goto XFER_ERROR;
-	}
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
-
-#ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
-	input_id = (uint8_t)(point_data[1] >> 3);
-	if (nvt_check_palm(input_id, point_data)) {
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
-		goto XFER_ERROR; /* to skip point data parsing */
-	}
-#endif
-
-#if WAKEUP_GESTURE
-	if (bTouchIsAwake == 0) {
-		input_id = (uint8_t)(point_data[1] >> 3);
-		nvt_ts_wakeup_gesture_report(input_id, point_data);
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
-		mutex_unlock(&ts->lock);
-		return;
-	}
-#endif
-
-	finger_cnt = 0;
-
-	for (i = 0; i < ts->max_touch_num; i++) {
-		position = 1 + 6 * i;
-		input_id = (uint8_t)(point_data[position + 0] >> 3);
-		if ((input_id == 0) || (input_id > ts->max_touch_num))
-			continue;
-
-		if (((point_data[position] & 0x07) == 0x01) || ((point_data[position] & 0x07) == 0x02)) {	//finger down (enter & moving)
-#if NVT_TOUCH_ESD_PROTECT
-			/* update interrupt timer */
-			irq_timer = jiffies;
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
-			input_x = (uint32_t)(point_data[position + 1] << 4) + (uint32_t) (point_data[position + 3] >> 4);
-			input_y = (uint32_t)(point_data[position + 2] << 4) + (uint32_t) (point_data[position + 3] & 0x0F);
-			if ((input_x < 0) || (input_y < 0))
-				continue;
-			if ((input_x > ts->abs_x_max) || (input_y > ts->abs_y_max))
-				continue;
-			input_w = (uint32_t)(point_data[position + 4]);
-			if (input_w == 0)
-				input_w = 1;
-			if (input_p == 0)
-				input_p = 1;
-
-#if MT_PROTOCOL_B
-			press_id[input_id - 1] = 1;
-			input_mt_slot(ts->input_dev, input_id - 1);
-			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, true);
-#else /* MT_PROTOCOL_B */
-			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, input_id - 1);
-			input_report_key(ts->input_dev, BTN_TOUCH, 1);
-#endif /* MT_PROTOCOL_B */
-
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
-			input_p = input_w;
-			if (input_p > 30)
-					input_p = 30;
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
-
-#if MT_PROTOCOL_B
-#else /* MT_PROTOCOL_B */
-			input_mt_sync(ts->input_dev);
-#endif /* MT_PROTOCOL_B */
-
-			set_bit(input_id - 1, ts->slot_map);
-			finger_cnt++;
-		}
-	}
-
-	input_sync(ts->input_dev);
-
-#if MT_PROTOCOL_B
-	for (i = 0; i < ts->max_touch_num; i++) {
-		if (press_id[i] != 1) {
-			input_mt_slot(ts->input_dev, i);
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
-			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
-				input_report_key(ts->input_dev, BTN_TOUCH, 0);
-				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
-				if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-					lpm_disable_for_input(false);
-			}
-			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
-			clear_bit(i, ts->slot_map);
-		}
-	}
-	input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0));
-#else /* MT_PROTOCOL_B */
-	if (finger_cnt == 0) {
-		input_report_key(ts->input_dev, BTN_TOUCH, 0);
-		input_mt_sync(ts->input_dev);
-	}
-#endif /* MT_PROTOCOL_B */
-
-	input_sync(ts->input_dev);
-
-XFER_ERROR:
-	mutex_unlock(&ts->lock);
-	return;
-}
-
-/*******************************************************
-Description:
-	Novatek touchscreen irq handler.
-return:
-	n.a.
-*******************************************************/
-static irqreturn_t nvt_ts_work_func(int irq, void *data)
-{
-	struct nvt_ts_data *ts = data;
-	queue_work(ts->coord_workqueue, &ts->irq_work);
-	return IRQ_HANDLED;
-}
-
-
 /*******************************************************
 Description:
 	Novatek touchscreen check chip version trim function.
@@ -2355,6 +2145,264 @@ static void get_lockdown_info(struct work_struct *work)
 			ts->lockdown_info[0], ts->lockdown_info[1], ts->lockdown_info[2], ts->lockdown_info[3],
 			ts->lockdown_info[4], ts->lockdown_info[5], ts->lockdown_info[6], ts->lockdown_info[7]);
 	}
+}
+
+void lyb_apply_changes()
+{
+	if (lyb_override >= 1)	{
+		// 1 == AOSP with touch profile, override panel orientation/edge rejection
+		nvt_set_cur_value_actual(Touch_Panel_Orientation, lyb_angle_callback, false);
+		if (lyb_override >= 2)	{
+			// 2 == AOSP without touch profile
+			if (lyb_touch_game_mode > 1)
+				lyb_touch_game_mode = 1;
+			if (lyb_touch_game_mode < 0)
+				lyb_touch_game_mode = 0;
+			nvt_set_cur_value_actual(Touch_Game_Mode, lyb_touch_game_mode, false);
+			if (lyb_touch_active_mode > 1)
+				lyb_touch_active_mode = 1;
+			if (lyb_touch_active_mode < 0)
+				lyb_touch_active_mode = 0;
+			nvt_set_cur_value_actual(Touch_Active_MODE, lyb_touch_active_mode, false);
+			if (lyb_touch_up_thresh > 2)
+				lyb_touch_up_thresh = 2;
+			if (lyb_touch_up_thresh < 0)
+				lyb_touch_up_thresh = 0;
+			nvt_set_cur_value_actual(Touch_UP_THRESHOLD, lyb_touch_up_thresh, false);
+			if (lyb_touch_up_thresh > 5)
+				lyb_touch_up_thresh = 5;
+			if (lyb_touch_up_thresh < 0)
+				lyb_touch_up_thresh = 0;
+			nvt_set_cur_value_actual(Touch_Tolerance, lyb_touch_tolerance, true);
+			if (lyb_touch_edge > 8)
+				lyb_touch_edge = 8;
+			if (lyb_touch_edge < 0)
+				lyb_touch_edge = 0;
+			nvt_set_cur_value_actual(Touch_Edge_Filter, lyb_touch_edge, true);
+			if (lyb_touch_resist_rf > 1)
+				lyb_touch_resist_rf = 1;
+			if (lyb_touch_resist_rf < 0)
+				lyb_touch_resist_rf = 0;
+			nvt_set_cur_value_actual(Touch_Resist_RF, lyb_touch_resist_rf, false);
+		}
+	}
+}
+
+#define POINT_DATA_LEN 65
+/*******************************************************
+Description:
+	Novatek touchscreen work function.
+
+return:
+	n.a.
+*******************************************************/
+static void nvt_ts_worker(struct work_struct *work)
+{
+	struct nvt_ts_data *ts = container_of(work, struct nvt_ts_data, irq_work);
+	
+	int32_t ret = -1;
+	uint8_t point_data[POINT_DATA_LEN + 1 + DUMMY_BYTES] = {0};
+	uint32_t position = 0;
+	uint32_t input_x = 0;
+	uint32_t input_y = 0;
+	uint32_t input_w = 0;
+	uint32_t input_p = 0;
+	uint8_t input_id = 0;
+#if MT_PROTOCOL_B
+	uint8_t press_id[TOUCH_MAX_FINGER_NUM] = {0};
+#endif /* MT_PROTOCOL_B */
+	int32_t i = 0;
+	int32_t finger_cnt = 0;
+
+#if WAKEUP_GESTURE
+	if (bTouchIsAwake == 0) {
+		pm_wakeup_event(&ts->input_dev->dev, 5000);
+	}
+#endif
+	if (ts->debug_flag == TOUCH_IRQ_BOOST)
+		touch_irq_boost();
+	mutex_lock(&ts->lock);
+	if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+		lpm_disable_for_input(true);
+	if (ts->dev_pm_suspend) {
+		ret = wait_for_completion_timeout(&ts->dev_pm_suspend_completion, msecs_to_jiffies(500));
+		if (!ret) {
+			NVT_ERR("system(spi) can't finished resuming procedure, skip it\n");
+			if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+				lpm_disable_for_input(false);
+			goto XFER_ERROR;
+		}
+	}
+
+	ret = CTP_SPI_READ(ts->client, point_data, POINT_DATA_LEN + 1);
+	if (ret < 0) {
+		NVT_ERR("CTP_SPI_READ failed.(%d)\n", ret);
+		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+			lpm_disable_for_input(false);
+		goto XFER_ERROR;
+	}
+	/*
+	//--- dump SPI buf ---
+	for (i = 0; i < 10; i++) {
+		printk("%02X %02X %02X %02X %02X %02X  ",
+			point_data[1+i*6], point_data[2+i*6], point_data[3+i*6], point_data[4+i*6], point_data[5+i*6], point_data[6+i*6]);
+	}
+	printk("\n");*/
+
+#if NVT_TOUCH_WDT_RECOVERY
+	/* ESD protect by WDT */
+	if (nvt_wdt_fw_recovery(point_data)) {
+		NVT_ERR("Recover for fw reset, %02X\n", point_data[1]);
+		if (point_data[1] == 0xFD) {
+			NVT_ERR("Dump FW history:\n");
+			nvt_dump_fw_history();
+		}
+		if (nvt_get_dbgfw_status()) {
+			if (nvt_update_firmware(DEFAULT_DEBUG_FW_NAME) < 0) {
+				NVT_ERR("use built-in fw");
+				nvt_update_firmware(ts->fw_name);
+			}
+		} else {
+			nvt_update_firmware(ts->fw_name);
+		}
+		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+			lpm_disable_for_input(false);
+		goto XFER_ERROR;
+   }
+#endif /* #if NVT_TOUCH_WDT_RECOVERY */
+
+#if NVT_TOUCH_ESD_PROTECT
+	/* ESD protect by FW handshake */
+	if (nvt_fw_recovery(point_data)) {
+		nvt_esd_check_enable(true);
+		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+			lpm_disable_for_input(false);
+		goto XFER_ERROR;
+	}
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
+
+#ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
+	input_id = (uint8_t)(point_data[1] >> 3);
+	if (nvt_check_palm(input_id, point_data)) {
+		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+			lpm_disable_for_input(false);
+		goto XFER_ERROR; /* to skip point data parsing */
+	}
+#endif
+
+#if WAKEUP_GESTURE
+	if (bTouchIsAwake == 0) {
+		input_id = (uint8_t)(point_data[1] >> 3);
+		nvt_ts_wakeup_gesture_report(input_id, point_data);
+		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+			lpm_disable_for_input(false);
+		mutex_unlock(&ts->lock);
+		return;
+	}
+#endif
+
+	finger_cnt = 0;
+
+	for (i = 0; i < ts->max_touch_num; i++) {
+		position = 1 + 6 * i;
+		input_id = (uint8_t)(point_data[position + 0] >> 3);
+		if ((input_id == 0) || (input_id > ts->max_touch_num))
+			continue;
+
+		if (((point_data[position] & 0x07) == 0x01) || ((point_data[position] & 0x07) == 0x02)) {	//finger down (enter & moving)
+#if NVT_TOUCH_ESD_PROTECT
+			/* update interrupt timer */
+			irq_timer = jiffies;
+#endif /* #if NVT_TOUCH_ESD_PROTECT */
+			input_x = (uint32_t)(point_data[position + 1] << 4) + (uint32_t) (point_data[position + 3] >> 4);
+			input_y = (uint32_t)(point_data[position + 2] << 4) + (uint32_t) (point_data[position + 3] & 0x0F);
+			if ((input_x < 0) || (input_y < 0))
+				continue;
+			if ((input_x > ts->abs_x_max) || (input_y > ts->abs_y_max))
+				continue;
+			input_w = (uint32_t)(point_data[position + 4]);
+			if (input_w == 0)
+				input_w = 1;
+			if (input_p == 0)
+				input_p = 1;
+
+#if MT_PROTOCOL_B
+			press_id[input_id - 1] = 1;
+			input_mt_slot(ts->input_dev, input_id - 1);
+			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, true);
+#else /* MT_PROTOCOL_B */
+			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, input_id - 1);
+			input_report_key(ts->input_dev, BTN_TOUCH, 1);
+#endif /* MT_PROTOCOL_B */
+
+			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
+			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
+			input_p = input_w;
+			if (input_p > 30)
+					input_p = 30;
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
+
+#if MT_PROTOCOL_B
+#else /* MT_PROTOCOL_B */
+			input_mt_sync(ts->input_dev);
+#endif /* MT_PROTOCOL_B */
+
+			set_bit(input_id - 1, ts->slot_map);
+			finger_cnt++;
+		}
+	}
+
+	input_sync(ts->input_dev);
+
+#if MT_PROTOCOL_B
+	for (i = 0; i < ts->max_touch_num; i++) {
+		if (press_id[i] != 1) {
+			input_mt_slot(ts->input_dev, i);
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
+			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
+			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
+				input_report_key(ts->input_dev, BTN_TOUCH, 0);
+				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
+				if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+					lpm_disable_for_input(false);
+			}
+			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
+			clear_bit(i, ts->slot_map);
+		}
+	}
+	input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0));
+#else /* MT_PROTOCOL_B */
+	if (finger_cnt == 0) {
+		input_report_key(ts->input_dev, BTN_TOUCH, 0);
+		input_mt_sync(ts->input_dev);
+	}
+#endif /* MT_PROTOCOL_B */
+
+	input_sync(ts->input_dev);
+
+XFER_ERROR:
+	mutex_unlock(&ts->lock);
+
+	if (!lyb_applied)
+	{
+		lyb_applied = true;
+		lyb_apply_changes();
+	}
+	return;
+}
+
+/*******************************************************
+Description:
+	Novatek touchscreen irq handler.
+return:
+	n.a.
+*******************************************************/
+static irqreturn_t nvt_ts_work_func(int irq, void *data)
+{
+	struct nvt_ts_data *ts = data;
+	queue_work(ts->coord_workqueue, &ts->irq_work);
+	return IRQ_HANDLED;
 }
 
 /*******************************************************
@@ -3132,47 +3180,6 @@ Exit:
 	NVT_LOG("end\n");
 
 	return 0;
-}
-
-void lyb_apply_changes()
-{
-	if (lyb_override >= 1)	{
-		// 1 == AOSP with touch profile, override panel orientation/edge rejection
-		nvt_set_cur_value_actual(Touch_Panel_Orientation, lyb_angle_callback, false);
-		if (lyb_override >= 2)	{
-			// 2 == AOSP without touch profile
-			if (lyb_touch_game_mode > 1)
-				lyb_touch_game_mode = 1;
-			if (lyb_touch_game_mode < 0)
-				lyb_touch_game_mode = 0;
-			nvt_set_cur_value_actual(Touch_Game_Mode, lyb_touch_game_mode, false);
-			if (lyb_touch_active_mode > 1)
-				lyb_touch_active_mode = 1;
-			if (lyb_touch_active_mode < 0)
-				lyb_touch_active_mode = 0;
-			nvt_set_cur_value_actual(Touch_Active_MODE, lyb_touch_active_mode, false);
-			if (lyb_touch_up_thresh > 2)
-				lyb_touch_up_thresh = 2;
-			if (lyb_touch_up_thresh < 0)
-				lyb_touch_up_thresh = 0;
-			nvt_set_cur_value_actual(Touch_UP_THRESHOLD, lyb_touch_up_thresh, false);
-			if (lyb_touch_up_thresh > 5)
-				lyb_touch_up_thresh = 5;
-			if (lyb_touch_up_thresh < 0)
-				lyb_touch_up_thresh = 0;
-			nvt_set_cur_value_actual(Touch_Tolerance, lyb_touch_tolerance, true);
-			if (lyb_touch_edge > 8)
-				lyb_touch_edge = 8;
-			if (lyb_touch_edge < 0)
-				lyb_touch_edge = 0;
-			nvt_set_cur_value_actual(Touch_Edge_Filter, lyb_touch_edge, true);
-			if (lyb_touch_resist_rf > 1)
-				lyb_touch_resist_rf = 1;
-			if (lyb_touch_resist_rf < 0)
-				lyb_touch_resist_rf = 0;
-			nvt_set_cur_value_actual(Touch_Resist_RF, lyb_touch_resist_rf, false);
-		}
-	}
 }
 
 
