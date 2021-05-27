@@ -40,6 +40,8 @@ PATH="/android/bin:$CLANG_PATH/bin:$TC_PATH/bin:$TC_PATH32/bin:$PATH"
 
 mkdir -p $OUT_PATH
 
+compile_kernel () {
+
 make O=$OUT_PATH ARCH=arm64 $DEVICE_CONFIG
 
 # Build kernel
@@ -61,19 +63,26 @@ if $BUILD_DTBO; then
 	fi
 fi
 
-find out/arch/arm64/boot/dts -name '*.dtb' -exec cat {} + > out/arch/arm64/boot/dtb
+find $OUT_PATH/arch/arm64/boot/dts -name '*.dtb' -exec cat {} + > $OUT_PATH/arch/arm64/boot/dtb
+
+}
 
 #
 # Kernel packaging
 #
 
 # AnyKernel
-if $BUILD_ZIP; then
 
 export ANYKERNEL_URL=https://github.com/lybdroid/AnyKernel3.git
 export ANYKERNEL_PATH=$OUT_PATH/AnyKernel3
 export ANYKERNEL_BRANCH=vayu-miui
-export ZIPNAME="lybkernel-$DEVICE-$(date '+%Y%m%d-%H%M').zip"
+export ZIPDATE=$(date '+%Y%m%d-%H%M')
+export GITLOG=$(git log --pretty=format:'"%h : %s"' -1)
+export ZIPNAME="lybkernel-$DEVICE-$ZIPDATE.zip"
+
+pacakge_zip () {
+
+if $BUILD_ZIP; then
 
 if [ -f "$OUT_PATH/arch/arm64/boot/Image" ]; then
 	echo -e "Packaging...\n"
@@ -108,13 +117,22 @@ if [ -f "$OUT_PATH/arch/arm64/boot/Image" ]; then
         -F chat_id="$CHATID" \
         -F "disable_web_page_preview=true" \
         -F "parse_mode=html" \
-        -F caption="For <b>Poco X3 (vayu)</b>"
+        -F caption="For <b>Poco X3 (vayu)</b> <code>$GITLOG</code>"
 
 
 	echo -e "Cleaning build directory..."
-	#rm -rf $OUT_PATH/arch/arm64/boot
+	rm -rf $OUT_PATH/arch/arm64/boot
 else
 	echo -e "Error packaging kernel."
 fi
 
 fi
+}
+
+compile_kernel
+pacakge_zip
+curl https://github.com/lybdroid/kernel_xiaomi_vayu/commit/cc0f575d69d8e302536240c1ea5e5e3d50748212.patch | git am
+curl https://github.com/lybdroid/kernel_xiaomi_vayu/commit/8d4ecaa855c484fa02092865d1d305ce2f7656cf.patch | git am
+ZIPNAME="lybkernel-ocuv-$DEVICE-$ZIPDATE.zip"
+compile_kernel
+pacakge_zip
