@@ -192,7 +192,7 @@ struct nvt_ts_data {
 	/*bit map indicate which slot(0~9) has been used*/
 	unsigned long slot_map[BITS_TO_LONGS(10)];
 	bool fw_debug;
-#ifdef CONFIG_TOUCHSCREEN_NVT_DEBUG_FS
+#ifdef CONFIG_TOUCHSCREEN_NVT_DEBUG_FS_STOCK
 	struct dentry *debugfs;
 #endif
 	struct workqueue_struct *event_wq;
