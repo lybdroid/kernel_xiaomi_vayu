@@ -13,6 +13,7 @@ if INPUT_TOUCHSCREEN
 
 source "drivers/input/touchscreen/xiaomi/Kconfig"
 source "drivers/input/touchscreen/nt36672c/Kconfig"
+source "drivers/input/touchscreen/nt36672c_stock/Kconfig"
 
 config SECURE_TOUCH
 	bool "Secure Touch"
@@ -1287,6 +1288,7 @@ config SPI_XIAOMI_TP
 	bool
 	depends on SPI
 	default y if TOUCHSCREEN_NT36xxx_HOSTDL_SPI
+	default y if TOUCHSCREEN_NT36xxx_HOSTDL_SPI_STOCK
 	help
 	Say Y if want use xiaomi touch panel.
 
