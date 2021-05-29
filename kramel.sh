@@ -13,20 +13,20 @@ export BUILD_DTBO=false
 # Do we build final zip ?
 export BUILD_ZIP=true
 
-# TC:
-git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $HOME/toolchain --depth=1
-git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 $HOME/toolchain32 --depth=1
+# prepare env
 export TC_PATH="$HOME/toolchain"
 export TC_PATH32="$HOME/toolchain32"
+export CLANG_PATH="$HOME/proton-clang"
+
+git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 $TC_PATH --depth=1 &
+git clone https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/arm/arm-linux-androideabi-4.9 $TC_PATH32 --depth=1 &
+git clone -q --depth=1 --single-branch https://github.com/kdrag0n/proton-clang $CLANG_PATH &
+wait
+
 
 # Google CLANG  9.x :
 # https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86/+archive/android-9.0.0_r48/clang-4691093.tar.gz
 #export CLANG_PATH=$PWD/../clang
-
-# Dragon CLANG 13.x :
-export CLANG_PATH="$HOME/proton-clang"
-git clone -q --depth=1 --single-branch https://github.com/kdrag0n/proton-clang $CLANG_PATH
-
 export OUT_PATH=$PWD/out
 
 #
