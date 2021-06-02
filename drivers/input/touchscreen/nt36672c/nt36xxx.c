@@ -2344,6 +2344,8 @@ static void nvt_ts_worker(struct work_struct *work)
 			press_id[input_id - 1] = 1;
 			input_mt_slot(ts->input_dev, input_id - 1);
 			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, true);
+			input_report_key(ts->input_dev, BTN_TOUCH, 1);
+			input_report_key(ts->input_dev, BTN_TOOL_FINGER, 1);
 #else /* MT_PROTOCOL_B */
 			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, input_id - 1);
 			input_report_key(ts->input_dev, BTN_TOUCH, 1);
@@ -2351,16 +2353,17 @@ static void nvt_ts_worker(struct work_struct *work)
 
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
-			input_p = input_w;
-			if (input_p > 20)
-					input_p = 20;
+			// input_p = input_w;
+			// if (input_p > 20)
+			// 		input_p = 20;
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
+			//input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
 
 #if MT_PROTOCOL_B
 #else /* MT_PROTOCOL_B */
 			input_mt_sync(ts->input_dev);
 #endif /* MT_PROTOCOL_B */
+			set_bit(input_id - 1, ts->slot_map);
 			finger_cnt++;
 		}
 	}
@@ -2370,15 +2373,18 @@ static void nvt_ts_worker(struct work_struct *work)
 		if (press_id[i] != 1) {
 			input_mt_slot(ts->input_dev, i);
 			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
 			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
+			/*input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0); */
+			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
+				input_report_key(ts->input_dev, BTN_TOUCH, 0);
+				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
+				if (ts->debug_flag >= TOUCH_DISABLE_LPM)
+					lpm_disable_for_input(false);
+			}
+			clear_bit(i, ts->slot_map);
 		}
 	}
-	input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0));
-	if (unlikely(finger_cnt == 0)) {
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
-	}
+	/* input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0)); */
 #else /* MT_PROTOCOL_B */
 	if (finger_cnt == 0) {
 		input_report_key(ts->input_dev, BTN_TOUCH, 0);
@@ -2577,7 +2583,7 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	input_mt_init_slots(ts->input_dev, ts->max_touch_num, 0);
 #endif
 
-	input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, 20, 0, 0);
+	//input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, 20, 0, 0);
 
 #if TOUCH_MAX_FINGER_NUM > 1
 	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
