@@ -2340,6 +2340,8 @@ static void nvt_ts_worker(struct work_struct *work)
 			input_w = (uint32_t)(point_data[position + 4]);
 			if (input_w == 0)
 				input_w = 1;
+			if (input_w > 255)
+				input_w = 255;
 #if MT_PROTOCOL_B
 			press_id[input_id - 1] = 1;
 			input_mt_slot(ts->input_dev, input_id - 1);
@@ -2353,16 +2355,17 @@ static void nvt_ts_worker(struct work_struct *work)
 
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
 			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
+			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
 			// input_p = input_w;
 			// if (input_p > 20)
 			// 		input_p = 20;
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
 			//input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
 
 #if MT_PROTOCOL_B
 #else /* MT_PROTOCOL_B */
 			input_mt_sync(ts->input_dev);
 #endif /* MT_PROTOCOL_B */
+
 			set_bit(input_id - 1, ts->slot_map);
 			finger_cnt++;
 		}
@@ -2394,14 +2397,17 @@ static void nvt_ts_worker(struct work_struct *work)
 
 	input_sync(ts->input_dev);
 
-XFER_ERROR:
 	mutex_unlock(&ts->lock);
-
 	if (unlikely(!lyb_applied))
 	{
 		lyb_applied = true;
 		lyb_apply_changes();
 	}
+	return;
+
+XFER_ERROR:
+
+	mutex_unlock(&ts->lock);
 	return;
 }
 
