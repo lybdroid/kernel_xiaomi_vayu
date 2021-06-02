@@ -2375,7 +2375,7 @@ static void nvt_ts_worker(struct work_struct *work)
 	for (i = 0; i < ts->max_touch_num; i++) {
 		if (press_id[i] != 1) {
 			input_mt_slot(ts->input_dev, i);
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
+			/* input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0); */
 			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
 			/*input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0); */
 			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
