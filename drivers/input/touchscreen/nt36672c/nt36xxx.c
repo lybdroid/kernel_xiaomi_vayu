@@ -116,8 +116,6 @@ extern void dsi_panel_doubleclick_enable(bool on);
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 static int32_t nvt_check_palm(uint8_t input_id, uint8_t *data);
 #endif
-extern void touch_irq_boost(void);
-extern void lpm_disable_for_input(bool on);
 uint32_t ENG_RST_ADDR  = 0x7FFF80;
 uint32_t SWRST_N8_ADDR = 0; /* read from dtsi */
 uint32_t SPI_RD_FAST_ADDR = 0; /* read from dtsi */
@@ -2234,17 +2232,11 @@ static void nvt_ts_worker(struct work_struct *work)
 		pm_wakeup_event(&ts->input_dev->dev, 5000);
 	}
 #endif
-	if (ts->debug_flag == TOUCH_IRQ_BOOST)
-		touch_irq_boost();
 	mutex_lock(&ts->lock);
-	if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-		lpm_disable_for_input(true);
 	if (unlikely(ts->dev_pm_suspend)) {
 		ret = wait_for_completion_timeout(&ts->dev_pm_suspend_completion, msecs_to_jiffies(500));
 		if (!ret) {
 			NVT_ERR("system(spi) can't finished resuming procedure, skip it\n");
-			if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-				lpm_disable_for_input(false);
 			goto XFER_ERROR;
 		}
 	}
@@ -2252,8 +2244,6 @@ static void nvt_ts_worker(struct work_struct *work)
 	ret = CTP_SPI_READ(ts->client, point_data, POINT_DATA_LEN + 1);
 	if (unlikely(ret < 0)) {
 		NVT_ERR("CTP_SPI_READ failed.(%d)\n", ret);
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
 		goto XFER_ERROR;
 	}
 	/*
@@ -2280,8 +2270,6 @@ static void nvt_ts_worker(struct work_struct *work)
 		} else {
 			nvt_update_firmware(ts->fw_name);
 		}
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
 		goto XFER_ERROR;
    }
 #endif /* #if NVT_TOUCH_WDT_RECOVERY */
@@ -2290,8 +2278,6 @@ static void nvt_ts_worker(struct work_struct *work)
 	/* ESD protect by FW handshake */
 	if (unlikely(nvt_fw_recovery(point_data))) {
 		nvt_esd_check_enable(true);
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
 		goto XFER_ERROR;
 	}
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
@@ -2299,8 +2285,6 @@ static void nvt_ts_worker(struct work_struct *work)
 #ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
 	input_id = (uint8_t)(point_data[1] >> 3);
 	if (unlikely(nvt_check_palm(input_id, point_data))) {
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
 		goto XFER_ERROR; /* to skip point data parsing */
 	}
 #endif
@@ -2309,8 +2293,6 @@ static void nvt_ts_worker(struct work_struct *work)
 	if (unlikely(bTouchIsAwake == 0)) {
 		input_id = (uint8_t)(point_data[1] >> 3);
 		nvt_ts_wakeup_gesture_report(input_id, point_data);
-		if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-			lpm_disable_for_input(false);
 		mutex_unlock(&ts->lock);
 		return;
 	}
@@ -2367,8 +2349,6 @@ static void nvt_ts_worker(struct work_struct *work)
 			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
 				input_report_key(ts->input_dev, BTN_TOUCH, 0);
 				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
-				if (ts->debug_flag >= TOUCH_DISABLE_LPM)
-					lpm_disable_for_input(false);
 			}
 			clear_bit(i, ts->slot_map);
 		}
