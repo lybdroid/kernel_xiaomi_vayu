@@ -41,6 +41,8 @@
 #include <linux/earlysuspend.h>
 #endif
 
+#include <linux/devfreq_boost.h>
+
 #include "nt36xxx.h"
 #ifndef NVT_SAVE_TESTDATA_IN_FILE
 #include "nt36xxx_mp_ctrlram.h"
@@ -2232,6 +2234,8 @@ static void nvt_ts_worker(struct work_struct *work)
 		pm_wakeup_event(&ts->input_dev->dev, 5000);
 	}
 #endif
+	devfreq_boost_kick_max(DEVFREQ_MSM_LLCCBW, 100);
+	devfreq_boost_kick_max(DEVFREQ_MSM_CPUBW, 100);
 	mutex_lock(&ts->lock);
 	if (unlikely(ts->dev_pm_suspend)) {
 		ret = wait_for_completion_timeout(&ts->dev_pm_suspend_completion, msecs_to_jiffies(500));
