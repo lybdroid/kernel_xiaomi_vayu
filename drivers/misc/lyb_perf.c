@@ -9,13 +9,15 @@ MODULE_DESCRIPTION("lyb performance driver");
 MODULE_VERSION("0.0.1");
 
 int lyb_sconfig = -1;
-module_param(lyb_sconfig, int, 0644);
 
 bool lyb_boost = false;
 module_param(lyb_boost, bool, 0644);
 
 bool lyb_eff = false;
 module_param(lyb_eff, bool, 0644);
+
+bool lyb_boost_def = false;
+module_param(lyb_boost_def, bool, 0644);
 
 int lyb_min_1_l = 1708800;
 int lyb_min_1_b = 1401600;
