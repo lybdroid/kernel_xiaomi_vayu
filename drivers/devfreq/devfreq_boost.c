@@ -11,6 +11,7 @@
 #include <linux/kthread.h>
 #include <linux/slab.h>
 #include <uapi/linux/sched/types.h>
+#include <misc/lyb_perf.h>
 
 enum {
 	SCREEN_OFF,
@@ -58,7 +59,7 @@ static struct df_boost_drv df_boost_drv_g __read_mostly = {
 
 static void __devfreq_boost_kick(struct boost_dev *b)
 {
-	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state))
+	if (!READ_ONCE(b->df) || test_bit(SCREEN_OFF, &b->state) || (!lyb_boost))
 		return;
 
 	set_bit(INPUT_BOOST, &b->state);

@@ -13,6 +13,8 @@
 #include <linux/version.h>
 #include <linux/slab.h>
 
+#include <misc/lyb_perf.h>
+
 /* The sched_param struct is located elsewhere in newer kernels */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 10, 0)
 #include <uapi/linux/sched/types.h>
@@ -188,7 +190,7 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 		return NOTIFY_OK;
 
 	/* Unboost when the screen is off */
-	if (test_bit(SCREEN_OFF, &b->state)) {
+	if ((test_bit(SCREEN_OFF, &b->state) || (!lyb_boost))) {
 		policy->min = policy->cpuinfo.min_freq;
 		return NOTIFY_OK;
 	}
@@ -203,13 +205,23 @@ static int cpu_notifier_cb(struct notifier_block *nb, unsigned long action,
 	 * Boost to policy->max if the boost frequency is higher. When
 	 * unboosting, set policy->min to the absolute min freq for the CPU.
 	 */
-	if (test_bit(INPUT_BOOST, &b->state))
-		policy->min = get_input_boost_freq(policy);
-	else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
-		policy->min = CONFIG_MIN_FREQ_LP;
-	else
-		policy->min = CONFIG_MIN_FREQ_PERF;
 
+	if (lyb_eff)
+	{
+		if (test_bit(INPUT_BOOST, &b->state))
+			policy->min = get_input_boost_freq(policy);
+		else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+			policy->min = lyb_min_1_l;
+		else
+			policy->min = lyb_min_1_b;
+	} else {
+		if (test_bit(INPUT_BOOST, &b->state))
+			policy->min = get_input_boost_freq(policy);
+		else if (cpumask_test_cpu(policy->cpu, cpu_lp_mask))
+			policy->min = CONFIG_MIN_FREQ_LP;
+		else
+			policy->min = CONFIG_MIN_FREQ_PERF;
+	}
 	return NOTIFY_OK;
 }
 

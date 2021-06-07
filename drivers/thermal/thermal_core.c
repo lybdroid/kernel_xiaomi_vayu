@@ -37,6 +37,8 @@
 #include "thermal_core.h"
 #include "thermal_hwmon.h"
 
+#include "misc/lyb_perf.h"
+
 MODULE_AUTHOR("Zhang Rui");
 MODULE_DESCRIPTION("Generic thermal management sysfs support");
 MODULE_LICENSE("GPL v2");
@@ -1672,6 +1674,16 @@ thermal_sconfig_store(struct device *dev,
 	int val = -1;
 
 	val = simple_strtol(buf, NULL, 10);
+	
+	lyb_sconfig = val;
+
+	if ((val == 9) || (val == 10))
+		lyb_boost = true;
+	else lyb_boost = false;
+
+	if (val == 9)
+		lyb_eff = true;
+	else lyb_eff = false;
 
 	atomic_set(&switch_mode, val);
 
