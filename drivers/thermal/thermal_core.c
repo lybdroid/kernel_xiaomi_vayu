@@ -1679,8 +1679,11 @@ thermal_sconfig_store(struct device *dev,
 
 	if ((val == 9) || (val == 10))
 		lyb_boost = true;
-	else  if (lyb_boost_def && ((val == 0) || val == -1))
-		lyb_boost = true else lyb_boost = false;
+	else {
+		if (lyb_boost_def && ((val == 0) || val == -1))
+		lyb_boost = true;
+		else lyb_boost = false;
+	}
 
 	if (val == 9)
 		lyb_eff = true;
