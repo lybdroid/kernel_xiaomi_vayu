@@ -1677,17 +1677,34 @@ thermal_sconfig_store(struct device *dev,
 	
 	lyb_sconfig = val;
 
+	if (val == 11)
+	{
+		lyb_boost_devfreq = true;
+	} else
 	if ((val == 9) || (val == 10))
-		lyb_boost = true;
+	{
+		lyb_boost_cpu = true;
+		lyb_boost_devfreq = true;
+	}
 	else {
 		if (lyb_boost_def && ((val == 0) || val == -1))
-		lyb_boost = true;
-		else lyb_boost = false;
+		{
+			lyb_boost_cpu = true;
+			lyb_boost_devfreq = true;
+		}
+		else {
+			lyb_boost_cpu = false;
+			lyb_boost_devfreq = false;
+		}
 	}
 
 	if (val == 9)
 		lyb_eff = true;
-	else lyb_eff = false;
+	else {
+		if (lyb_eff_def && ((val == 0) || val == -1))
+		lyb_eff = true;
+		else lyb_eff = false;
+	}
 
 	atomic_set(&switch_mode, val);
 

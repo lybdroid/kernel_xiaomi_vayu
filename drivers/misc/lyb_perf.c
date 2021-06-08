@@ -10,14 +10,17 @@ MODULE_VERSION("0.0.1");
 
 int lyb_sconfig = -1;
 
-bool lyb_boost = false;
-module_param(lyb_boost, bool, 0644);
+bool lyb_boost_cpu = false;
+bool lyb_boost_devfreq = false;
 
 bool lyb_eff = false;
 module_param(lyb_eff, bool, 0644);
 
 bool lyb_boost_def = false;
 module_param(lyb_boost_def, bool, 0644);
+
+bool lyb_eff_def = false;
+module_param(lyb_eff_def, bool, 0644);
 
 int lyb_min_1_l = 1708800;
 int lyb_min_1_b = 1401600;
