@@ -4568,7 +4568,6 @@ void sde_encoder_helper_needs_hw_reset(struct drm_encoder *drm_enc)
 	}
 }
 
-extern int sde_connector_update_backlight(struct drm_connector *conn);
 int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		struct sde_encoder_kickoff_params *params)
 {
@@ -4600,10 +4599,6 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 		sde_enc->frame_trigger_mode = sde_connector_get_property(
 			sde_enc->cur_master->connector->state,
 			CONNECTOR_PROP_CMD_FRAME_TRIGGER_MODE);
-
-	/*Kent.xie@MM.Display.LCD,2019-03-29 add for dc backlight */
-	if (sde_enc->cur_master  && (!strcmp(sde_enc->cur_master->connector->name, "DSI-1")))
-		sde_connector_update_backlight(sde_enc->cur_master->connector);
 
 	/* prepare for next kickoff, may include waiting on previous kickoff */
 	SDE_ATRACE_BEGIN("sde_encoder_prepare_for_kickoff");
