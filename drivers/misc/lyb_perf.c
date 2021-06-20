@@ -25,8 +25,17 @@ module_param(lyb_eff_def, bool, 0644);
 int lyb_min_1_l = 1708800;
 int lyb_min_1_b = 1401600;
 
+extern char *saved_command_line;
+
 static int __init lyb_driver_init(void) {
- printk(KERN_INFO "lyb_perf initialized");
+    if (strstr(saved_command_line, "lyb_boost_def=1")) {
+		lyb_boost_def = 1;
+	}
+
+    if (strstr(saved_command_line, "lyb_eff_def=1")) {
+		lyb_eff_def = 1;
+	}
+    printk(KERN_INFO "lyb_perf initialized");
  return 0;
 }
 
