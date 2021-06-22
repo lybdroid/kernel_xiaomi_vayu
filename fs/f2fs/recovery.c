@@ -10,6 +10,7 @@
 #include "f2fs.h"
 #include "node.h"
 #include "segment.h"
+#include <notrace.h>
 
 /*
  * Roll forward recovery scenarios.

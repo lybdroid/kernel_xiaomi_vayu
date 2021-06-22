@@ -28,6 +28,7 @@
 #include <linux/unicode.h>
 #include "ext4.h"
 #include "xattr.h"
+#include <notrace.h>
 
 static int ext4_dx_readdir(struct file *, struct dir_context *);
 
