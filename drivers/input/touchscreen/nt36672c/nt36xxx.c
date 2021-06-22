@@ -33,7 +33,7 @@
 
 #include <linux/notifier.h>
 #ifdef CONFIG_DRM
-#include <linux/msm_drm_notify.h>
+#include <drm/drm_notifier.h>
 #endif
 
 #include <linux/fb.h>
@@ -2916,7 +2916,7 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_DRM
 	ts->drm_notif.notifier_call = nvt_drm_notifier_callback;
-	ret = msm_drm_register_client(&ts->drm_notif);
+	ret = drm_register_client(&ts->drm_notif);
 	if(ret) {
 		NVT_ERR("register drm_notifier failed. ret=%d\n", ret);
 		goto err_register_drm_notif_failed;
@@ -2969,7 +2969,7 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	return 0;
 
 #ifdef CONFIG_DRM
-	if(msm_drm_unregister_client(&ts->drm_notif))
+	if(drm_unregister_client(&ts->drm_notif))
 		NVT_ERR("Error occurred while unregistering drm_notifier.\n");
 err_register_drm_notif_failed:
 #else
@@ -3070,7 +3070,7 @@ static int32_t nvt_ts_remove(struct platform_device *pdev)
 		destroy_workqueue(ts->coord_workqueue);
 
 #ifdef CONFIG_DRM
-	if (msm_drm_unregister_client(&ts->drm_notif))
+	if (drm_unregister_client(&ts->drm_notif))
 		NVT_ERR("Error occurred while unregistering drm_notifier.\n");
 #else
 	if (fb_unregister_client(&ts->fb_notif))
@@ -3144,7 +3144,7 @@ static void nvt_ts_shutdown(struct platform_device *pdev)
 	nvt_irq_enable(false);
 
 #ifdef CONFIG_DRM
-	if (msm_drm_unregister_client(&ts->drm_notif))
+	if (drm_unregister_client(&ts->drm_notif))
 		NVT_ERR("Error occurred while unregistering drm_notifier.\n");
 #else
 	if (fb_unregister_client(&ts->fb_notif))
@@ -3382,7 +3382,7 @@ Exit:
 #ifdef CONFIG_DRM
 static int nvt_drm_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
-	struct msm_drm_notifier *evdata = data;
+	struct drm_notify_data *evdata = data;
 	int *blank;
 	struct nvt_ts_data *ts_data=
 		container_of(self, struct nvt_ts_data, drm_notif);
@@ -3391,14 +3391,14 @@ static int nvt_drm_notifier_callback(struct notifier_block *self, unsigned long 
 		blank = evdata->data;
 		NVT_LOG("%s: event:%lu,blank:%u\n", event, blank);
 
-		if (event == MSM_DRM_EARLY_EVENT_BLANK) {
-			if (*blank == MSM_DRM_BLANK_POWERDOWN) {
+		if (event == DRM_EARLY_EVENT_BLANK) {
+			if (*blank == DRM_BLANK_POWERDOWN) {
 				NVT_LOG("event=%lu, *blank=%d\n", event, *blank);
 				flush_workqueue(ts_data->event_wq);
 				nvt_ts_suspend(&ts_data->client->dev);
 			}
-		} else if (event == MSM_DRM_EVENT_BLANK) {
-			if (*blank == MSM_DRM_BLANK_UNBLANK) {
+		} else if (event == DRM_EVENT_BLANK) {
+			if (*blank == DRM_BLANK_UNBLANK) {
 				NVT_LOG("event=%lu, *blank=%d\n", event, *blank);
 				flush_workqueue(ts_data->event_wq);
 				queue_work(ts_data->event_wq, &ts_data->resume_work);
