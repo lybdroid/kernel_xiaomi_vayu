@@ -1681,7 +1681,7 @@ thermal_sconfig_store(struct device *dev,
 	{
 		lyb_boost_devfreq = true;
 	} else
-	if ((val == 9) || (val == 10))
+	if ((val == 9) || (val == 10) || (val == 13))
 	{
 		lyb_boost_cpu = true;
 		lyb_boost_devfreq = true;
@@ -1698,7 +1698,7 @@ thermal_sconfig_store(struct device *dev,
 		}
 	}
 
-	if (val == 9)
+	if (val == 9 || val == 13)
 		lyb_eff = true;
 	else {
 		if (lyb_eff_def && ((val == 0) || val == -1))
