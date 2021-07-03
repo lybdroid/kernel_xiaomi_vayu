@@ -243,7 +243,7 @@ module_param(lyb_touch_tolerance, int, 0644);
 static int lyb_touch_edge = 0;
 module_param(lyb_touch_edge, int, 0644);
 
-static int lyb_touch_resist_rf = 0;
+static int lyb_touch_resist_rf = 1;
 module_param(lyb_touch_resist_rf, int, 0644);
 
 static bool lyb_applied = false;
