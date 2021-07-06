@@ -183,8 +183,9 @@ static void vma_stop(struct proc_maps_private *priv)
 	up_read(&mm->mmap_sem);
 	mmput(mm);
 
-	sched_migrate_to_cpumask_end(to_cpumask(&priv->old_cpus_allowed),
-				     cpu_lp_mask);
+	if (priv->cpus_affined)
+		sched_migrate_to_cpumask_end(to_cpumask(&priv->old_cpus_allowed),
+						to_cpumask(&lyb_sultan_proc_affinity));
 }
 
 static struct vm_area_struct *
@@ -221,9 +222,14 @@ static void *m_start(struct seq_file *m, loff_t *ppos)
 	if (!mm || !mmget_not_zero(mm))
 		return NULL;
 
-	sched_migrate_to_cpumask_start(to_cpumask(&priv->old_cpus_allowed),
-				       cpu_lp_mask);
-
+	if (lyb_sultan_proc_affine)
+	{
+		priv->cpus_affined = true;
+		sched_migrate_to_cpumask_start(to_cpumask(&priv->old_cpus_allowed),
+						to_cpumask(&lyb_sultan_proc_affinity));
+	} else {
+		priv->cpus_affined = false;
+	}
 	down_read(&mm->mmap_sem);
 	hold_task_mempolicy(priv);
 	priv->tail_vma = get_gate_vma(mm);
