@@ -220,8 +220,6 @@ struct attribute *nvt_panel_attr[] = {
 
 static uint8_t bTouchIsAwake = 0;
 
-static bool lyb_pressure = false;
-
 static int lyb_override = 2;
 module_param(lyb_override, int, 0644);
 
@@ -2412,193 +2410,6 @@ XFER_ERROR:
 	return;
 }
 
-
-/*******************************************************
-Description:
-	Novatek touchscreen work function with Pressure
-
-return:
-	n.a.
-*******************************************************/
-static void nvt_ts_worker_pressure(struct work_struct *work)
-{
-	struct nvt_ts_data *ts = container_of(work, struct nvt_ts_data, irq_work);
-	
-	int32_t ret = -1;
-	uint8_t point_data[POINT_DATA_LEN + 1 + DUMMY_BYTES] = {0};
-	uint32_t position = 0;
-	uint32_t input_x = 0;
-	uint32_t input_y = 0;
-	uint8_t input_id = 0;
-	uint32_t input_w = 0;
-	uint32_t input_p = 0;
-#if MT_PROTOCOL_B
-	uint8_t press_id[TOUCH_MAX_FINGER_NUM] = {0};
-#endif /* MT_PROTOCOL_B */
-	int32_t i = 0;
-	int32_t finger_cnt = 0;
-
-#if WAKEUP_GESTURE
-	if (unlikely(bTouchIsAwake == 0)) {
-		pm_wakeup_event(&ts->input_dev->dev, 5000);
-	}
-#endif
-	mutex_lock(&ts->lock);
-	if (unlikely(ts->dev_pm_suspend)) {
-		ret = wait_for_completion_timeout(&ts->dev_pm_suspend_completion, msecs_to_jiffies(500));
-		if (!ret) {
-			NVT_ERR("system(spi) can't finished resuming procedure, skip it\n");
-			goto XFER_ERROR;
-		}
-	}
-
-	ret = CTP_SPI_READ(ts->client, point_data, POINT_DATA_LEN + 1);
-	if (unlikely(ret < 0)) {
-		NVT_ERR("CTP_SPI_READ failed.(%d)\n", ret);
-		goto XFER_ERROR;
-	}
-	/*
-	//--- dump SPI buf ---
-	for (i = 0; i < 10; i++) {
-		printk("%02X %02X %02X %02X %02X %02X  ",
-			point_data[1+i*6], point_data[2+i*6], point_data[3+i*6], point_data[4+i*6], point_data[5+i*6], point_data[6+i*6]);
-	}
-	printk("\n");*/
-
-#if NVT_TOUCH_WDT_RECOVERY
-	/* ESD protect by WDT */
-	if (unlikely(nvt_wdt_fw_recovery(point_data))) {
-		NVT_ERR("Recover for fw reset, %02X\n", point_data[1]);
-		if (point_data[1] == 0xFD) {
-			NVT_ERR("Dump FW history:\n");
-			nvt_dump_fw_history();
-		}
-		if (nvt_get_dbgfw_status()) {
-			if (nvt_update_firmware(DEFAULT_DEBUG_FW_NAME) < 0) {
-				NVT_ERR("use built-in fw");
-				nvt_update_firmware(ts->fw_name);
-			}
-		} else {
-			nvt_update_firmware(ts->fw_name);
-		}
-		goto XFER_ERROR;
-   }
-#endif /* #if NVT_TOUCH_WDT_RECOVERY */
-
-#if NVT_TOUCH_ESD_PROTECT
-	/* ESD protect by FW handshake */
-	if (unlikely(nvt_fw_recovery(point_data))) {
-		nvt_esd_check_enable(true);
-		goto XFER_ERROR;
-	}
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
-
-#ifdef CONFIG_TOUCHSCREEN_XIAOMI_TOUCHFEATURE
-	input_id = (uint8_t)(point_data[1] >> 3);
-	if (unlikely(nvt_check_palm(input_id, point_data))) {
-		goto XFER_ERROR; /* to skip point data parsing */
-	}
-#endif
-
-#if WAKEUP_GESTURE
-	if (unlikely(bTouchIsAwake == 0)) {
-		input_id = (uint8_t)(point_data[1] >> 3);
-		nvt_ts_wakeup_gesture_report(input_id, point_data);
-		mutex_unlock(&ts->lock);
-		return;
-	}
-#endif
-
-	finger_cnt = 0;
-
-	for (i = 0; i < ts->max_touch_num; i++) {
-		position = 1 + 6 * i;
-		input_id = (uint8_t)(point_data[position + 0] >> 3);
-		if ((input_id == 0) || (input_id > ts->max_touch_num))
-			continue;
-
-		if (((point_data[position] & 0x07) == 0x01) || ((point_data[position] & 0x07) == 0x02)) {	//finger down (enter & moving)
-#if NVT_TOUCH_ESD_PROTECT
-			/* update interrupt timer */
-			irq_timer = jiffies;
-#endif /* #if NVT_TOUCH_ESD_PROTECT */
-			input_x = (uint32_t)(point_data[position + 1] << 4) + (uint32_t) (point_data[position + 3] >> 4);
-			input_y = (uint32_t)(point_data[position + 2] << 4) + (uint32_t) (point_data[position + 3] & 0x0F);
-			if ((input_x < 0) || (input_y < 0))
-				continue;
-			if ((input_x > ts->abs_x_max) || (input_y > ts->abs_y_max))
-				continue;
-			input_w = (uint32_t)(point_data[position + 4]);
-			if (input_w == 0)
-				input_w = 1;
-			if (input_w > 255)
-				input_w = 255;
-#if MT_PROTOCOL_B
-			press_id[input_id - 1] = 1;
-			input_mt_slot(ts->input_dev, input_id - 1);
-			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, true);
-			input_report_key(ts->input_dev, BTN_TOUCH, 1);
-			input_report_key(ts->input_dev, BTN_TOOL_FINGER, 1);
-#else /* MT_PROTOCOL_B */
-			input_report_abs(ts->input_dev, ABS_MT_TRACKING_ID, input_id - 1);
-			input_report_key(ts->input_dev, BTN_TOUCH, 1);
-#endif /* MT_PROTOCOL_B */
-
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_X, input_x);
-			input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, input_y);
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, input_w);
-			input_p = input_w;
-			if (input_p > 20)
-					input_p = 20;
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, input_p);
-#if MT_PROTOCOL_B
-#else /* MT_PROTOCOL_B */
-			input_mt_sync(ts->input_dev);
-#endif /* MT_PROTOCOL_B */
-
-			set_bit(input_id - 1, ts->slot_map);
-			finger_cnt++;
-		}
-	}
-
-#if MT_PROTOCOL_B
-	for (i = 0; i < ts->max_touch_num; i++) {
-		if (press_id[i] != 1) {
-			input_mt_slot(ts->input_dev, i);
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0); 
-			input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
-			if (finger_cnt == 0 && test_bit(i, ts->slot_map)) {
-				input_report_key(ts->input_dev, BTN_TOUCH, 0);
-				input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
-			}
-			clear_bit(i, ts->slot_map);
-		}
-	}
-	/* input_report_key(ts->input_dev, BTN_TOUCH, (finger_cnt > 0)); */
-#else /* MT_PROTOCOL_B */
-	if (finger_cnt == 0) {
-		input_report_key(ts->input_dev, BTN_TOUCH, 0);
-		input_mt_sync(ts->input_dev);
-	}
-#endif /* MT_PROTOCOL_B */
-
-	input_sync(ts->input_dev);
-
-	mutex_unlock(&ts->lock);
-	if (unlikely(!lyb_applied))
-	{
-		lyb_applied = true;
-		lyb_apply_changes();
-	}
-	return;
-
-XFER_ERROR:
-
-	mutex_unlock(&ts->lock);
-	return;
-}
-
 /*******************************************************
 Description:
 	Novatek touchscreen irq handler.
@@ -2627,15 +2438,6 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	struct attribute_group *attrs_p = NULL;
 
 	NVT_LOG("start\n");
-
-	if (strstr(saved_command_line, "lyb_tsmod=1")) {
-		lyb_override = 2;
-	}
-
-	if (strstr(saved_command_line, "lyb_tsmod=2")) {
-		lyb_override = 2;
-		lyb_pressure = true;
-	}
 
 	ts = kzalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
 	if (ts == NULL) {
@@ -2786,12 +2588,6 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	input_mt_init_slots(ts->input_dev, ts->max_touch_num, 0);
 #endif
 
-	if (lyb_pressure)
-	{
-		input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, 20, 0, 0);
-		input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
-	}
-
 #if TOUCH_MAX_FINGER_NUM > 1
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X, 0, ts->abs_x_max - 1, 0, 0);
 	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y, 0, ts->abs_y_max - 1, 0, 0);
@@ -2934,9 +2730,7 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_create_nvt_ts_workqueue_failed;
 	}
-	if (lyb_pressure)
-		INIT_WORK(&ts->irq_work, nvt_ts_worker_pressure);
-	else INIT_WORK(&ts->irq_work, nvt_ts_worker);
+	INIT_WORK(&ts->irq_work, nvt_ts_worker);
 	
 	ts->event_wq = alloc_workqueue("nvt-event-queue",
 		WQ_UNBOUND | WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
@@ -3286,11 +3080,6 @@ static int32_t nvt_ts_suspend(struct device *dev)
 #if MT_PROTOCOL_B
 	for (i = 0; i < ts->max_touch_num; i++) {
 		input_mt_slot(ts->input_dev, i);
-		if (lyb_pressure)
-		{
-			input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
-			input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
-		}
 		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 0);
 	}
 #endif
