@@ -2202,6 +2202,7 @@ void lyb_apply_changes()
 {
 	if (lyb_override >= 1)	{
 		// 1 == AOSP with touch profile, override panel orientation/edge rejection
+		usleep_range(100, 200);
 		nvt_set_cur_value_actual(Touch_Panel_Orientation, lyb_angle_callback, false);
 		if (lyb_override >= 2)	{
 			// 2 == AOSP without touch profile
@@ -2209,31 +2210,37 @@ void lyb_apply_changes()
 				lyb_touch_game_mode = 1;
 			if (lyb_touch_game_mode < 0)
 				lyb_touch_game_mode = 0;
+			usleep_range(100, 200);
 			nvt_set_cur_value_actual(Touch_Game_Mode, lyb_touch_game_mode, false);
 			if (lyb_touch_active_mode > 1)
 				lyb_touch_active_mode = 1;
 			if (lyb_touch_active_mode < 0)
 				lyb_touch_active_mode = 0;
+			usleep_range(100, 200);
 			nvt_set_cur_value_actual(Touch_Active_MODE, lyb_touch_active_mode, false);
 			if (lyb_touch_up_thresh > 2)
 				lyb_touch_up_thresh = 2;
 			if (lyb_touch_up_thresh < 0)
 				lyb_touch_up_thresh = 0;
+			usleep_range(100, 200);
 			nvt_set_cur_value_actual(Touch_UP_THRESHOLD, lyb_touch_up_thresh, false);
 			if (lyb_touch_up_thresh > 5)
 				lyb_touch_up_thresh = 5;
 			if (lyb_touch_up_thresh < 0)
 				lyb_touch_up_thresh = 0;
+			usleep_range(100, 200);
 			nvt_set_cur_value_actual(Touch_Tolerance, lyb_touch_tolerance, true);
 			if (lyb_touch_edge > 8)
 				lyb_touch_edge = 8;
 			if (lyb_touch_edge < 0)
 				lyb_touch_edge = 0;
+			usleep_range(100, 200);
 			nvt_set_cur_value_actual(Touch_Edge_Filter, lyb_touch_edge, true);
 			if (lyb_touch_resist_rf > 1)
 				lyb_touch_resist_rf = 1;
 			if (lyb_touch_resist_rf < 0)
 				lyb_touch_resist_rf = 0;
+			usleep_range(100, 200);
 			nvt_set_cur_value_actual(Touch_Resist_RF, lyb_touch_resist_rf, false);
 		}
 	}
