@@ -2241,15 +2241,12 @@ void lyb_apply_changes()
 #define POINT_DATA_LEN 65
 /*******************************************************
 Description:
-	Novatek touchscreen work function.
-
+	Novatek touchscreen irq handler.
 return:
 	n.a.
 *******************************************************/
-static void nvt_ts_worker(struct work_struct *work)
+static irqreturn_t nvt_ts_work_func(int irq, void *data)
 {
-	struct nvt_ts_data *ts = container_of(work, struct nvt_ts_data, irq_work);
-	
 	int32_t ret = -1;
 	uint8_t point_data[POINT_DATA_LEN + 1 + DUMMY_BYTES] = {0};
 	uint32_t position = 0;
@@ -2404,26 +2401,22 @@ static void nvt_ts_worker(struct work_struct *work)
 		lyb_applied = true;
 		lyb_apply_changes();
 	}
-	return;
+	return IRQ_HANDLED;
 
 XFER_ERROR:
 
 	mutex_unlock(&ts->lock);
-	return;
+	return IRQ_HANDLED;
 }
-
 
 /*******************************************************
 Description:
-	Novatek touchscreen work function with Pressure
-
+	Novatek touchscreen irq handler with pressure.
 return:
 	n.a.
 *******************************************************/
-static void nvt_ts_worker_pressure(struct work_struct *work)
+static irqreturn_t nvt_ts_work_func_pressure(int irq, void *data)
 {
-	struct nvt_ts_data *ts = container_of(work, struct nvt_ts_data, irq_work);
-	
 	int32_t ret = -1;
 	uint8_t point_data[POINT_DATA_LEN + 1 + DUMMY_BYTES] = {0};
 	uint32_t position = 0;
@@ -2591,24 +2584,11 @@ static void nvt_ts_worker_pressure(struct work_struct *work)
 		lyb_applied = true;
 		lyb_apply_changes();
 	}
-	return;
+	return IRQ_HANDLED;
 
 XFER_ERROR:
 
 	mutex_unlock(&ts->lock);
-	return;
-}
-
-/*******************************************************
-Description:
-	Novatek touchscreen irq handler.
-return:
-	n.a.
-*******************************************************/
-static irqreturn_t nvt_ts_work_func(int irq, void *data)
-{
-	struct nvt_ts_data *ts = data;
-	queue_work(ts->coord_workqueue, &ts->irq_work);
 	return IRQ_HANDLED;
 }
 
@@ -2831,8 +2811,15 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	if (ts->client->irq) {
 		NVT_LOG("int_trigger_type=%d\n", ts->int_trigger_type);
 		ts->irq_enabled = true;
+
+		if (lyb_pressure)
+		{
+		ret = request_threaded_irq(ts->client->irq, NULL, nvt_ts_work_func_pressure,
+				ts->int_trigger_type | IRQF_ONESHOT | IRQF_PERF_AFFINE, NVT_SPI_NAME, ts);
+		} else {
 		ret = request_threaded_irq(ts->client->irq, NULL, nvt_ts_work_func,
 				ts->int_trigger_type | IRQF_ONESHOT | IRQF_PERF_AFFINE, NVT_SPI_NAME, ts);
+		}
 		if (ret != 0) {
 			NVT_ERR("request irq failed. ret=%d\n", ret);
 			goto err_int_request_failed;
@@ -2930,16 +2917,6 @@ static int32_t nvt_ts_probe(struct platform_device *pdev)
 	attrs_p->attrs = nvt_panel_attr;
 	ret = sysfs_create_group(&pdev->dev.kobj, ts->attrs);
 
-	ts->coord_workqueue = alloc_workqueue("nvt_ts_workqueue", WQ_HIGHPRI, 0);
-	if (!ts->coord_workqueue) {
-		NVT_ERR("create nvt_ts_workqueue fail");
-		ret = -ENOMEM;
-		goto err_create_nvt_ts_workqueue_failed;
-	}
-	if (lyb_pressure)
-		INIT_WORK(&ts->irq_work, nvt_ts_worker_pressure);
-	else INIT_WORK(&ts->irq_work, nvt_ts_worker);
-	
 	ts->event_wq = alloc_workqueue("nvt-event-queue",
 		WQ_UNBOUND | WQ_HIGHPRI | WQ_CPU_INTENSIVE, 1);
 	if (!ts->event_wq) {
@@ -3018,9 +2995,6 @@ err_register_fb_notif_failed:
 err_register_early_suspend_failed:
 #endif
 	destroy_workqueue(ts->event_wq);
-err_create_nvt_ts_workqueue_failed:
-	if (ts->coord_workqueue)
-		destroy_workqueue(ts->coord_workqueue);
 err_alloc_work_thread_failed:
 #if NVT_TOUCH_MP
 nvt_mp_proc_deinit();
@@ -3101,9 +3075,6 @@ return:
 static int32_t nvt_ts_remove(struct platform_device *pdev)
 {
 	NVT_LOG("Removing driver...\n");
-
-	if (ts->coord_workqueue)
-		destroy_workqueue(ts->coord_workqueue);
 
 #ifdef CONFIG_DRM
 	if (drm_unregister_client(&ts->drm_notif))
