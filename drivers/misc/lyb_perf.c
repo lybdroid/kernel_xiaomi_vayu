@@ -22,8 +22,14 @@ module_param(lyb_boost_def, bool, 0644);
 bool lyb_eff_def = false;
 module_param(lyb_eff_def, bool, 0644);
 
+int lyb_min_0_l = 1036800;
+module_param(lyb_min_0_l, int, 0644);
+int lyb_min_0_b = 1056000;
+module_param(lyb_min_0_b, int, 0644);
 int lyb_min_1_l = 1708800;
+module_param(lyb_min_1_l, int, 0644);
 int lyb_min_1_b = 1401600;
+module_param(lyb_min_1_b, int, 0644);
 
 extern char *saved_command_line;
 

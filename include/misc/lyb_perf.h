@@ -7,5 +7,7 @@ extern bool lyb_boost_devfreq;
 extern bool lyb_boost_def;
 extern bool lyb_eff_def;
 
+extern int lyb_min_0_l;
+extern int lyb_min_0_b;
 extern int lyb_min_1_l;
 extern int lyb_min_1_b;
