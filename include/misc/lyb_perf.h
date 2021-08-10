@@ -11,3 +11,5 @@ extern int lyb_min_0_l;
 extern int lyb_min_0_b;
 extern int lyb_min_1_l;
 extern int lyb_min_1_b;
+
+extern bool lyb_kgsl_skip_zero;

@@ -21,6 +21,8 @@
 #include "kgsl_device.h"
 #include "kgsl_pool.h"
 
+#include <misc/lyb_perf.h>
+
 #define KGSL_MAX_POOLS 4
 #define KGSL_MAX_POOL_ORDER 8
 #define KGSL_MAX_RESERVED_PAGES 4096
@@ -433,7 +435,9 @@ void kgsl_pool_free_page(struct page *page)
 			(kgsl_pool_size_total() < kgsl_pool_max_pages)) {
 		pool = _kgsl_get_pool_from_order(page_order);
 		if (pool != NULL) {
-			_kgsl_pool_add_page_skipzeropages(pool, page);
+			if (lyb_kgsl_skip_zero)
+				_kgsl_pool_add_page_skipzeropages(pool, page);
+			else _kgsl_pool_add_page(pool, page);
 			return;
 		}
 	}

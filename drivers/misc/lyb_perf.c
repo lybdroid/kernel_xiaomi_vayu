@@ -22,6 +22,9 @@ module_param(lyb_boost_def, bool, 0644);
 __read_mostly bool lyb_eff_def = false;
 module_param(lyb_eff_def, bool, 0644);
 
+__read_mostly bool lyb_kgsl_skip_zero = false;
+module_param(lyb_kgsl_skip_zero, bool, 0644);
+
 __read_mostly int lyb_min_0_l = 1036800;
 module_param(lyb_min_0_l, int, 0644);
 __read_mostly int lyb_min_0_b = 1056000;
